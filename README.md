@@ -48,6 +48,11 @@ energy-platform/
 ├── ai/
 │   ├── anomaly.py     # expected-vs-actual residuals + domain rules
 │   └── agent.py       # rule-based diagnostic KB + optional Claude enrichment
+├── dataset/           # sensor-level PV simulator + labeled fault dataset
+│   ├── sensor_simulator.py   # generates sensor_data.csv (10 fault labels)
+│   ├── sensor_data.csv       # committed dataset (1,000 second-interval rows)
+│   ├── analyze_dataset.py    # statistical report (stdlib only)
+│   └── visualize_data.py     # 10 matplotlib plots (see dataset/README.md)
 └── web/               # dashboard: canvas digital twin, SVG charts, drawer UI
 ```
 
