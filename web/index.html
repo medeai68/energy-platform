@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Energy AI Platform — Digital Twin &amp; Diagnostics</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">⚡</span>
+    <span class="brand-name">Energy AI Platform</span>
+    <span class="brand-tag">Digital Twin · Virtual Sensors · AI Diagnostics</span>
+  </div>
+  <div class="clock" id="clock">
+    Day <b id="clock-day">1</b> · <b id="clock-time">06:00</b>
+    <span class="speed-chip" id="speed-chip">60×</span>
+  </div>
+  <div class="controls">
+    <label class="ctl">Speed
+      <select id="speed">
+        <option value="1">1× real time</option>
+        <option value="10">10×</option>
+        <option value="60" selected>60×</option>
+        <option value="300">300×</option>
+      </select>
+    </label>
+    <label class="ctl">Weather
+      <select id="weather">
+        <option value="auto" selected>Auto</option>
+        <option value="clear">Clear</option>
+        <option value="partly">Partly cloudy</option>
+        <option value="cloudy">Cloudy</option>
+        <option value="overcast">Overcast</option>
+      </select>
+    </label>
+    <button id="pause-btn" class="btn">⏸ Pause</button>
+    <button id="reset-btn" class="btn">↺ Reset</button>
+    <button id="theme-btn" class="btn" title="Toggle light / dark">◐</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <section class="card twin-card">
+    <div class="card-head">
+      <h2>Digital Twin</h2>
+      <p class="sub">Commercial building · 50&nbsp;kWp rooftop solar — click a device to inspect &amp; inject faults</p>
+    </div>
+    <div class="twin-wrap" id="twin-wrap">
+      <canvas id="twin" width="980" height="560"></canvas>
+      <div class="twin-overlay">
+        <div class="overlay-panel" id="overlay-legend"></div>
+        <div class="overlay-panel" id="overlay-weather"></div>
+      </div>
+      <div id="twin-tip" class="twin-tip hidden"></div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="kpi-row">
+      <div class="kpi" id="kpi-solar">
+        <div class="kpi-label">Solar generation</div>
+        <div class="kpi-value" id="kpi-solar-val">—</div>
+        <div class="kpi-sub" id="kpi-solar-sub">—</div>
+      </div>
+      <div class="kpi" id="kpi-load">
+        <div class="kpi-label">Building load</div>
+        <div class="kpi-value" id="kpi-load-val">—</div>
+        <div class="kpi-sub" id="kpi-load-sub">—</div>
+      </div>
+      <div class="kpi" id="kpi-grid">
+        <div class="kpi-label">Grid exchange</div>
+        <div class="kpi-value" id="kpi-grid-val">—</div>
+        <div class="kpi-sub" id="kpi-grid-sub">—</div>
+      </div>
+      <div class="kpi" id="kpi-suff">
+        <div class="kpi-label">Self-sufficiency</div>
+        <div class="kpi-value" id="kpi-suff-val">—</div>
+        <div class="kpi-sub" id="kpi-suff-sub">—</div>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Energy mix today</h2>
+        <button class="table-toggle" data-table="mix">table</button>
+      </div>
+      <div id="mix-chart"></div>
+    </section>
+
+    <section class="card alerts-card">
+      <div class="card-head">
+        <h2>Alerts</h2>
+        <span class="sub" id="alert-count"></span>
+      </div>
+      <ul id="alerts" class="alerts"></ul>
+    </section>
+  </aside>
+
+  <section class="card chart-card">
+    <div class="card-head">
+      <h2>Power flow</h2>
+      <p class="sub">kW · solar generation, building load, grid exchange</p>
+      <div class="range-row" id="range-row">
+        <button class="range-btn" data-range="1440">1d</button>
+        <button class="range-btn" data-range="4320">3d</button>
+        <button class="range-btn" data-range="10080">7d</button>
+        <button class="range-btn selected" data-range="0">All</button>
+        <button class="table-toggle" data-table="main">table</button>
+      </div>
+    </div>
+    <div id="main-chart" class="chart"></div>
+  </section>
+
+</main>
+
+<aside id="device-drawer" class="drawer hidden" aria-label="Device detail">
+  <div class="drawer-head">
+    <h2 id="dev-name">Device</h2>
+    <button id="drawer-close" class="btn" title="Close">✕</button>
+  </div>
+  <div id="dev-body" class="drawer-body"></div>
+</aside>
+
+<script src="app.js"></script>
+</body>
+</html>

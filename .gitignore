@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Local config (keeps API keys out of the repo)
+.env
