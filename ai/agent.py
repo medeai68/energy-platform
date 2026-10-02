@@ -9,6 +9,12 @@ Two engines, one interface:
    credentials are available, the same context is sent to the Claude API
    (claude-opus-5) with structured JSON output. Any error falls back to the
    rule-based engine so the platform keeps working offline.
+
+Sensor-level fault flags from `dataset/adapter.py` (via `extra.sensor_flags`)
+are handled first, so the AI agent can name voltage_bias, sensor_dropout,
+stuck_sensor, voltage_drift, sensor_noise, panel_overheating,
+inverter_overheating, grid_voltage_anomaly and power_loss signatures coming
+from the labeled PV dataset.
 """
 
 import json
@@ -86,6 +92,69 @@ DEFAULT_CAUSES = [
 ]
 
 NOUN = {"solar": "generation", "inverter": "output"}
+
+
+# ---------------- Sensor-level fault rules ----------------
+# Signatures produced by `dataset/sensor_faults.py` and passed through
+# `extra.sensor_flags` by `dataset/adapter.py`. These complement the
+# equipment-fault entries in RULE_SETS above.
+
+SENSOR_RULES = {
+    "voltage_bias": [
+        {"cause": "Voltage sensor bias / calibration offset", "confidence": 0.85,
+         "actions": ["Cross-check the sensor against a calibrated reference meter",
+                     "Re-calibrate or replace the voltage transducer",
+                     "Verify the signal wiring for a fixed offset source"]},
+    ],
+    "voltage_drift": [
+        {"cause": "Voltage sensor drift over time (thermal or aging)", "confidence": 0.70,
+         "actions": ["Log the offset over a 24h window and check for monotonic growth",
+                     "Re-calibrate the sensor; check for temperature-dependent behavior",
+                     "Compare against the inverter's internal DC voltage reading"]},
+    ],
+    "sensor_dropout": [
+        {"cause": "Voltage sensor dropout (no reading)", "confidence": 0.90,
+         "actions": ["Inspect the sensor wiring and connector for a break",
+                     "Check the data-acquisition channel for a fault",
+                     "Replace the sensor if the dropout persists"]},
+    ],
+    "stuck_sensor": [
+        {"cause": "Stuck voltage sensor (frozen at a fixed value)", "confidence": 0.85,
+         "actions": ["Power-cycle the sensor or its DAQ channel",
+                     "Verify the sensor responds to a known voltage change",
+                     "Replace the sensor if it stays stuck"]},
+    ],
+    "sensor_noise": [
+        {"cause": "Voltage sensor noise / jitter", "confidence": 0.60,
+         "actions": ["Check for electrical interference near the sensor cable",
+                     "Add shielding or a signal filter to the DAQ channel",
+                     "Verify grounding of the sensor and the cabinet"]},
+    ],
+    "panel_overheating": [
+        {"cause": "Panel overheating (thermal fault)", "confidence": 0.80,
+         "actions": ["Inspect the affected string for hot spots with an IR camera",
+                     "Check for partial shading or soiling on the panel",
+                     "Verify ventilation and mounting clearance"]},
+    ],
+    "inverter_overheating": [
+        {"cause": "Inverter overheating (cooling degraded)", "confidence": 0.75,
+         "actions": ["Clean the heat sink and check the fan",
+                     "Verify clearance around the inverter for airflow",
+                     "Review the load profile; consider derating if sustained"]},
+    ],
+    "grid_voltage_anomaly": [
+        {"cause": "Grid voltage out of the normal range", "confidence": 0.75,
+         "actions": ["Check the utility side for a disturbance or tap change",
+                     "Verify the inverter's grid-protection settings",
+                     "Log the event and correlate with neighbouring sites"]},
+    ],
+    "power_loss": [
+        {"cause": "Power loss (current collapse under normal voltage)", "confidence": 0.70,
+         "actions": ["Check the string fuses and DC disconnects",
+                     "Compare per-string currents in the inverter portal",
+                     "Inspect for a loose DC termination"]},
+    ],
+}
 
 
 def _direction(rel):
@@ -191,6 +260,28 @@ def diagnose(device, event, rel, use_claude=True):
             "causes": [],
             "basis": ["Residual within the noise band of the expected model"],
         }
+
+    # Sensor-level fault flags (from dataset/adapter.py's extra.sensor_flags)
+    # take priority over the generic residual-based diagnosis, so the AI
+    # agent can name signatures coming from the labeled PV dataset.
+    sensor_flags = (device.get("extra") or {}).get("sensor_flags") or []
+    if sensor_flags:
+        first = sensor_flags[0]
+        if first in SENSOR_RULES:
+            noun = NOUN.get(device["kind"], "output")
+            return {
+                "engine": "rule-based",
+                "summary": (f"{device['name']} {noun} is flagged as '{first}' by the "
+                            f"dataset sensor-fault classifier "
+                            f"({device['actual']:.1f} kW vs {device['expected']:.1f} kW expected)."),
+                "causes": SENSOR_RULES[first],
+                "basis": [
+                    f"Sensor flag: {first}",
+                    f"All flags for this row: {sensor_flags}",
+                    "Source: dataset/sensor_faults.py (labeled PV dataset)",
+                ],
+            }
+
     context = {
         "facility": "Commercial building with 50 kWp rooftop solar, 50 kW inverter, "
                     "3x12 kW HVAC, 6 kW lighting, 9 kW plug loads",

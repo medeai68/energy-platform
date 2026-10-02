@@ -59,13 +59,3 @@ python analyze_dataset.py
 # open the 10 interactive plots (requires matplotlib)
 pip install -r requirements.txt
 python visualize_data.py
-```
-
-Only `visualize_data.py` needs a third-party package (matplotlib);
-the simulator and analyzer are standard-library only.
-
-## Source
-
-Contributed by a team member from their repository:
-<https://github.com/makaynwalu/Solar-Energy-Enterprise-AI-Monitoring-Simulation-System>
-
