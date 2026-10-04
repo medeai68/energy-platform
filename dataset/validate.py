@@ -130,4 +130,10 @@ def run_validation(path=CSV_PATH):
 
 
 if __name__ == "__main__":
-    run_validation()
+    result = run_validation()
+    # Non-zero exit below the accuracy floor so CI jobs can guard against regressions.
+    FLOOR = 90.0
+    if result["overall_accuracy"] < FLOOR:
+        raise SystemExit(f"FAIL: end-to-end accuracy {result['overall_accuracy']:.1f}% "
+                         f"is below the {FLOOR:.0f}% floor")
+    raise SystemExit(0)

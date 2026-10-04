@@ -117,73 +117,178 @@ function renderKpis() {
 
 /* ---------------- energy mix ---------------- */
 
+const mix = { mode: null, els: null };  // persistent mix card (patched in place)
+
 function renderMix() {
   const el = $("#mix-chart");
   const t = S.snap.kpis.today;
-  if (S.tables.has("mix")) { el.innerHTML = mixTableHTML(t); return; }
+  const mode = S.tables.has("mix") ? "table" : "bar";
+  if (mix.mode !== mode) {
+    el.textContent = "";
+    mix.els = null;
+    mix.mode = mode;
+  }
+
+  if (mode === "table") {
+    if (!mix.els) {
+      const table = document.createElement("table");
+      table.className = "mix-table";
+      table.innerHTML = `<thead><tr><th>Source</th><th>kWh today</th></tr></thead><tbody>
+        <tr><td>Solar (self-consumed)</td><td id="mix-v-solar">—</td></tr>
+        <tr><td>Grid import</td><td id="mix-v-import">—</td></tr>
+        <tr><td>Grid export</td><td id="mix-v-export">—</td></tr>
+        <tr><td>Total load</td><td id="mix-v-load">—</td></tr></tbody>`;
+      el.append(table);
+      mix.els = {
+        solar: table.querySelector("#mix-v-solar"),
+        imp: table.querySelector("#mix-v-import"),
+        exp: table.querySelector("#mix-v-export"),
+        load: table.querySelector("#mix-v-load"),
+      };
+    }
+    mix.els.solar.textContent = (t.solar_kwh - t.export_kwh).toFixed(1);
+    mix.els.imp.textContent = t.import_kwh.toFixed(1);
+    mix.els.exp.textContent = t.export_kwh.toFixed(1);
+    mix.els.load.textContent = t.load_kwh.toFixed(1);
+    return;
+  }
+
+  if (!mix.els) {
+    const bar = document.createElement("div");
+    bar.className = "mix-bar";
+    bar.setAttribute("role", "img");
+    const segS = document.createElement("div"); segS.className = "mix-seg";
+    const segG = document.createElement("div"); segG.className = "mix-seg";
+    bar.append(segS, segG);
+    const legend = document.createElement("div"); legend.className = "mix-legend";
+    const lS = document.createElement("span");
+    const swS = document.createElement("span"); swS.className = "swatch"; swS.style.background = cssVar("--series-1");
+    const tS = document.createTextNode("");
+    lS.append(swS, tS);
+    const lG = document.createElement("span");
+    const swG = document.createElement("span"); swG.className = "swatch"; swG.style.background = cssVar("--series-3");
+    const tG = document.createTextNode("");
+    lG.append(swG, tG);
+    const lX = document.createElement("span");
+    const tX = document.createTextNode("");
+    lX.append(tX);
+    legend.append(lS, lG, lX);
+    const empty = document.createElement("p");
+    empty.className = "alert-empty";
+    el.append(bar, legend, empty);
+    mix.els = { bar, segS, segG, legend, tS, tG, lX, tX, empty };
+  }
+
   const solarUsed = Math.max(0, t.solar_kwh - t.export_kwh);
   const grid = t.import_kwh;
   const total = solarUsed + grid;
-  if (total < 0.5) { el.innerHTML = '<p class="alert-empty">No consumption recorded yet.</p>'; return; }
+  if (total < 0.5) {
+    mix.els.bar.style.display = "none";
+    mix.els.legend.style.display = "none";
+    mix.els.empty.textContent = "No consumption recorded yet.";
+    mix.els.empty.style.display = "";
+    return;
+  }
+  mix.els.empty.style.display = "none";
+  mix.els.bar.style.display = "";
+  mix.els.legend.style.display = "";
   const sPct = (solarUsed / total) * 100;
   const gPct = (grid / total) * 100;
-  el.innerHTML = `
-    <div class="mix-bar" role="img" aria-label="Energy mix: solar ${sPct.toFixed(0)} percent, grid ${gPct.toFixed(0)} percent">
-      <div class="mix-seg" style="flex:${sPct};background:${cssVar("--series-1")}"></div>
-      <div class="mix-seg" style="flex:${gPct};background:${cssVar("--series-3")}"></div>
-    </div>
-    <div class="mix-legend">
-      <span><span class="swatch" style="background:${cssVar("--series-1")}"></span>Solar ${sPct.toFixed(0)}% · ${solarUsed.toFixed(0)} kWh</span>
-      <span><span class="swatch" style="background:${cssVar("--series-3")}"></span>Grid ${gPct.toFixed(0)}% · ${grid.toFixed(0)} kWh</span>
-      ${t.export_kwh > 0.5 ? `<span>Exported ${t.export_kwh.toFixed(0)} kWh</span>` : ""}
-    </div>`;
-}
-
-function mixTableHTML(t) {
-  const rows = [
-    ["Solar (self-consumed)", (t.solar_kwh - t.export_kwh).toFixed(1)],
-    ["Grid import", t.import_kwh.toFixed(1)],
-    ["Grid export", t.export_kwh.toFixed(1)],
-    ["Total load", t.load_kwh.toFixed(1)],
-  ];
-  return `<table class="mix-table"><thead><tr><th>Source</th><th>kWh today</th></tr></thead><tbody>` +
-    rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("") + `</tbody></table>`;
+  mix.els.bar.setAttribute("aria-label", `Energy mix: solar ${sPct.toFixed(0)} percent, grid ${gPct.toFixed(0)} percent`);
+  mix.els.segS.style.flex = sPct;
+  mix.els.segG.style.flex = gPct;
+  mix.els.tS.textContent = `Solar ${sPct.toFixed(0)}% · ${solarUsed.toFixed(0)} kWh`;
+  mix.els.tG.textContent = `Grid ${gPct.toFixed(0)}% · ${grid.toFixed(0)} kWh`;
+  if (t.export_kwh > 0.5) {
+    mix.els.tX.textContent = `Exported ${t.export_kwh.toFixed(0)} kWh`;
+    mix.els.lX.style.display = "";
+  } else {
+    mix.els.lX.style.display = "none";
+  }
 }
 
 /* ---------------- alerts ---------------- */
+
+const alertRows = new Map();  // event id -> live row elements
 
 function renderAlerts() {
   const ul = $("#alerts");
   const events = S.snap.events;
   $("#alert-count").textContent = S.snap.kpis.anomalies
     ? `${S.snap.kpis.anomalies} active anomaly${S.snap.kpis.anomalies > 1 ? "ies" : ""}` : "";
-  if (!events.length) { ul.innerHTML = '<li class="alert-empty">No events yet. Click a device in the twin and inject a fault.</li>'; return; }
-  ul.textContent = "";
-  for (const ev of events) {
-    const li = document.createElement("li");
-    li.className = "alert-row" + (ev.severity === "operator" ? " operator" : "");
-    const dot = document.createElement("span");
-    dot.className = "alert-dot";
-    dot.style.background = ev.severity === "operator" ? cssVar("--text-muted") : cssVar(STATUS[ev.severity].color);
-    const msg = document.createElement("span");
-    msg.className = "alert-msg";
-    const b = document.createElement("b");
-    b.textContent = ev.device_name;
-    msg.append(b, " — " + ev.message.replace(/^[^:]+:\s*/, ""));
-    const meta = document.createElement("span");
-    meta.className = "alert-meta";
-    meta.textContent = `D${ev.day} ${ev.time}`;
-    li.append(dot, msg, meta);
-    li.addEventListener("click", () => openDrawer(ev.device_id));
-    if (ev.severity !== "operator") {
-      const btn = document.createElement("button");
-      btn.className = "alert-ai";
-      btn.textContent = "Ask AI";
-      btn.addEventListener("click", (e) => { e.stopPropagation(); openDrawer(ev.device_id); askAI(ev.device_id); });
-      li.append(btn);
-    }
-    ul.append(li);
+
+  // drop rows whose events aged out of the feed
+  const seen = new Set(events.map(ev => ev.id));
+  for (const [id, row] of alertRows) {
+    if (!seen.has(id)) { row.li.remove(); alertRows.delete(id); }
   }
+
+  let placeholder = ul.querySelector(".alert-empty");
+  if (!events.length) {
+    if (!placeholder) {
+      placeholder = document.createElement("li");
+      placeholder.className = "alert-empty";
+      ul.append(placeholder);
+    }
+    placeholder.textContent = "No events yet. Click a device in the twin and inject a fault.";
+    return;
+  }
+  if (placeholder) placeholder.remove();
+
+  // insert/update rows in feed order (newest first), without touching untouched DOM
+  let prev = null;
+  for (const ev of events) {
+    let row = alertRows.get(ev.id);
+    if (!row) {
+      row = buildAlertRow(ev);
+      alertRows.set(ev.id, row);
+    } else {
+      updateAlertRow(row, ev);
+    }
+    if (row.li.previousElementSibling !== prev) {
+      ul.insertBefore(row.li, prev ? prev.nextSibling : ul.firstElementChild);
+    }
+    prev = row.li;
+  }
+  while (ul.lastElementChild !== prev) {
+    const last = ul.lastElementChild;
+    alertRows.delete(Number(last.dataset.id));
+    last.remove();
+  }
+}
+
+function buildAlertRow(ev) {
+  const li = document.createElement("li");
+  li.className = "alert-row";
+  li.dataset.id = ev.id;
+  const dot = document.createElement("span");
+  dot.className = "alert-dot";
+  const msg = document.createElement("span");
+  msg.className = "alert-msg";
+  const b = document.createElement("b");
+  const meta = document.createElement("span");
+  meta.className = "alert-meta";
+  li.append(dot, msg, meta);
+  li.addEventListener("click", () => openDrawer(ev.device_id));
+  let btn = null;
+  if (ev.severity !== "operator") {
+    btn = document.createElement("button");
+    btn.className = "alert-ai";
+    btn.textContent = "Ask AI";
+    btn.addEventListener("click", (e) => { e.stopPropagation(); openDrawer(ev.device_id); askAI(ev.device_id); });
+    li.append(btn);
+  }
+  const row = { li, dot, msg, b, meta, btn };
+  updateAlertRow(row, ev);
+  return row;
+}
+
+function updateAlertRow(row, ev) {
+  row.li.className = "alert-row" + (ev.severity === "operator" ? " operator" : "");
+  row.dot.style.background = ev.severity === "operator" ? cssVar("--text-muted") : cssVar(STATUS[ev.severity].color);
+  row.b.textContent = ev.device_name;
+  row.msg.replaceChildren(row.b, " — " + ev.message.replace(/^[^:]+:\s*/, ""));
+  row.meta.textContent = `D${ev.day} ${ev.time}`;
 }
 
 /* ============================================================
@@ -196,15 +301,137 @@ function niceStep(raw) {
   return 10 * pow;
 }
 
-function renderLineChart(container, data) {
-  // data: { key, x: [t], series: [{key, label, color, dashed, v: [...]}], height }
+const chartCache = {};   // chart key -> persistent instance (built once, patched in place)
+const tableCache = {};   // chart key -> persistent table instance
+
+function chartInstance(container, data, width) {
   const key = data.key;
-  if (S.tables.has(key)) { container.innerHTML = chartTableHTML(data); return; }
-  const width = Math.max(container.clientWidth || 600, 320);
   const height = data.height || 240;
   const m = { l: 46, r: 84, t: 12, b: 26 };
-  const pw = width - m.l - m.r, ph = height - m.t - m.b;
+  const seriesSig = data.series.map(s => s.key + (s.dashed ? "~" : "")).join(",");
+  const shapeKey = `${width}|${height}|${seriesSig}|${document.documentElement.dataset.theme}`;
+  let c = chartCache[key];
+  if (!c || c.shapeKey !== shapeKey) {
+    // --- build the persistent skeleton (static parts only) ---
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.style.height = height + "px";
+
+    const yGrid = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    svg.append(yGrid);
+
+    const xLabels = [];
+    for (let k = 0; k < 5; k++) {
+      const label = svgText("", 0, height - 8, "middle", "11px", cssVar("--text-muted"));
+      svg.append(label);
+      xLabels.push(label);
+    }
+
+    const paths = [], endDots = [], endLabels = [], leads = [];
+    for (const s of data.series) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", s.color);
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linejoin", "round");
+      path.setAttribute("stroke-linecap", "round");
+      if (s.dashed) path.setAttribute("stroke-dasharray", "6 4");
+      svg.append(path);
+      paths.push(path);
+
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("r", "4");
+      dot.setAttribute("fill", s.color);
+      dot.setAttribute("stroke", cssVar("--surface-1")); dot.setAttribute("stroke-width", "2");
+      svg.append(dot);
+      endDots.push(dot);
+
+      const lead = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      lead.setAttribute("x1", width - m.r - 4); lead.setAttribute("x2", width - m.r + 2);
+      lead.setAttribute("stroke", cssVar("--text-muted")); lead.setAttribute("stroke-width", "1");
+      lead.style.display = "none";
+      svg.append(lead);
+      leads.push(lead);
+
+      const txt = svgText("", width - m.r + 6, 0, "start", "11px", cssVar("--text-secondary"));
+      txt.setAttribute("font-weight", "600");
+      svg.append(txt);
+      endLabels.push(txt);
+    }
+
+    if (data.series.length >= 2) {
+      const legend = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      legend.setAttribute("transform", `translate(${m.l + 4}, 14)`);
+      let lx = 0;
+      for (const s of data.series) {
+        const keyLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        keyLine.setAttribute("x1", lx); keyLine.setAttribute("y1", 0);
+        keyLine.setAttribute("x2", lx + 16); keyLine.setAttribute("y2", 0);
+        keyLine.setAttribute("stroke", s.color); keyLine.setAttribute("stroke-width", "2");
+        if (s.dashed) keyLine.setAttribute("stroke-dasharray", "6 4");
+        legend.append(keyLine);
+        const txt = svgText(s.label, lx + 21, 3.5, "start", "11px", cssVar("--text-secondary"));
+        legend.append(txt);
+        lx += 21 + txt.getComputedTextLength() + 16;
+      }
+      svg.append(legend);
+    }
+
+    const cross = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    cross.setAttribute("y1", m.t); cross.setAttribute("y2", m.t + height - m.t - m.b);
+    cross.setAttribute("stroke", cssVar("--text-muted")); cross.setAttribute("stroke-width", "1");
+    cross.style.display = "none";
+    const crossDots = data.series.map(s => {
+      const cd = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      cd.setAttribute("r", "4"); cd.setAttribute("fill", s.color);
+      cd.setAttribute("stroke", cssVar("--surface-1")); cd.setAttribute("stroke-width", "2");
+      cd.style.display = "none";
+      svg.append(cd);
+      return cd;
+    });
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    overlay.setAttribute("x", m.l); overlay.setAttribute("y", m.t);
+    overlay.setAttribute("width", width - m.l - m.r); overlay.setAttribute("height", height - m.t - m.b);
+    overlay.setAttribute("fill", "transparent");
+    svg.append(cross, overlay);
+
+    const tip = document.createElement("div");
+    tip.className = "twin-tip";
+    tip.style.display = "none";
+    tip.style.position = "absolute";
+    tip.style.pointerEvents = "none";
+    container.style.position = "relative";
+
+    c = {
+      shapeKey, key, m, width, height, svg, yGrid, xLabels,
+      paths, endDots, endLabels, leads, cross, crossDots, overlay, tip,
+      yDomain: null, hoverI: null, data: null,
+    };
+    chartCache[key] = c;
+    container.textContent = "";
+    container.append(c.svg, c.tip);
+
+    // handlers bound once per instance; they read the latest c.data
+    overlay.addEventListener("mousemove", (e) => {
+      const n = c.data ? c.data.x.length : 0;
+      if (!n) return;
+      const rect = container.getBoundingClientRect();
+      const px = e.clientX - rect.left - m.l;
+      const pw = width - m.l - m.r;
+      const i = Math.max(0, Math.min(n - 1, Math.round((px / pw) * (n - 1))));
+      c.hoverI = i;
+      S._mainHover = { key, i };
+      showCross(c, i);
+    });
+    overlay.addEventListener("mouseleave", () => { c.hoverI = null; hideCross(c); });
+  }
+
+  c.data = data;
   const n = data.x.length;
+  if (!n) { hideCross(c); return; }
+  const pw = width - m.l - m.r, ph = height - m.t - m.b;
+
+  // --- scales ---
   const allV = data.series.flatMap(s => s.v);
   let yMin = Math.min(0, ...allV), yMax = Math.max(1, ...allV);
   const step = niceStep((yMax - yMin) / 4);
@@ -213,148 +440,135 @@ function renderLineChart(container, data) {
   const xAt = i => m.l + (n > 1 ? (i / (n - 1)) * pw : 0);
   const yAt = v => m.t + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.style.height = height + "px";
-
-  // gridlines (hairline, solid) + y tick labels
-  const yTicks = [];
-  for (let v = yMin; v <= yMax + step * 0.01; v += step) yTicks.push(Math.round(v * 100) / 100);
-  for (const v of yTicks) {
-    const y = yAt(v);
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", m.l); line.setAttribute("x2", width - m.r);
-    line.setAttribute("y1", y); line.setAttribute("y2", y);
-    line.setAttribute("stroke", v === 0 ? cssVar("--baseline") : cssVar("--gridline"));
-    line.setAttribute("stroke-width", "1");
-    svg.append(line);
-    const label = svgText(v.toFixed(v < 10 && v !== 0 ? 1 : 0), m.l - 8, y + 3.5, "end", "11px", cssVar("--text-muted"));
-    svg.append(label);
+  // y gridlines + labels rebuilt only when the domain actually changes
+  const domainSig = `${yMin}|${yMax}|${step}`;
+  if (c.yDomain !== domainSig) {
+    c.yDomain = domainSig;
+    c.yGrid.textContent = "";
+    for (let v = yMin; v <= yMax + step * 0.01; v += step) {
+      const vv = Math.round(v * 100) / 100;
+      const y = yAt(vv);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", m.l); line.setAttribute("x2", width - m.r);
+      line.setAttribute("y1", y); line.setAttribute("y2", y);
+      line.setAttribute("stroke", vv === 0 ? cssVar("--baseline") : cssVar("--gridline"));
+      line.setAttribute("stroke-width", "1");
+      c.yGrid.append(line);
+      c.yGrid.append(svgText(vv.toFixed(vv < 10 && vv !== 0 ? 1 : 0), m.l - 8, y + 3.5, "end", "11px", cssVar("--text-muted")));
+    }
   }
 
-  // x tick labels (5 across)
-  for (let k = 0; k <= 4; k++) {
+  // x tick labels: patched in place every render
+  for (let k = 0; k < 5; k++) {
     const i = Math.round((k / 4) * (n - 1));
-    const label = svgText(fmtTicks(data.x[i]), xAt(i), height - 8, "middle", "11px", cssVar("--text-muted"));
-    svg.append(label);
+    c.xLabels[k].textContent = fmtTicks(data.x[i]);
+    c.xLabels[k].setAttribute("x", xAt(i));
   }
 
-  // series lines (2px, round) + end dots + end labels
-  const endLabels = [];
-  for (const s of data.series) {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  // series paths + end dots + end labels (stacked, with leader lines)
+  const endInfos = data.series.map((s, si) => ({ si, y: yAt(s.v[n - 1]), value: s.v[n - 1] }));
+  endInfos.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < endInfos.length; i++) {
+    if (endInfos[i].y < endInfos[i - 1].y + 14) endInfos[i].y = endInfos[i - 1].y + 14;
+  }
+  data.series.forEach((s, si) => {
     let d = "";
     for (let i = 0; i < n; i++) d += (i ? "L" : "M") + xAt(i).toFixed(1) + " " + yAt(s.v[i]).toFixed(1);
-    path.setAttribute("d", d);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", s.color);
-    path.setAttribute("stroke-width", "2");
-    path.setAttribute("stroke-linejoin", "round");
-    path.setAttribute("stroke-linecap", "round");
-    if (s.dashed) path.setAttribute("stroke-dasharray", "6 4");
-    svg.append(path);
-    const ex = xAt(n - 1), ey = yAt(s.v[n - 1]);
-    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    dot.setAttribute("cx", ex); dot.setAttribute("cy", ey); dot.setAttribute("r", "4");
-    dot.setAttribute("fill", s.color);
-    dot.setAttribute("stroke", cssVar("--surface-1")); dot.setAttribute("stroke-width", "2");
-    svg.append(dot);
-    endLabels.push({ s, x: width - m.r + 6, y: ey });
-  }
-  // stack end labels so they never overlap; leader lines when displaced
-  endLabels.sort((a, b) => a.y - b.y);
-  for (let i = 1; i < endLabels.length; i++) {
-    if (endLabels[i].y < endLabels[i - 1].y + 14) endLabels[i].y = endLabels[i - 1].y + 14;
-  }
-  for (const L of endLabels) {
-    if (Math.abs(L.y - yAt(L.s.v[n - 1])) > 7) {
-      const lead = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      lead.setAttribute("x1", xAt(n - 1)); lead.setAttribute("y1", yAt(L.s.v[n - 1]));
-      lead.setAttribute("x2", width - m.r + 2); lead.setAttribute("y2", L.y);
-      lead.setAttribute("stroke", cssVar("--text-muted")); lead.setAttribute("stroke-width", "1");
-      svg.append(lead);
-    }
-    const txt = svgText(L.s.label + " " + L.s.v[n - 1].toFixed(1), L.x, L.y + 3.5, "start", "11px", cssVar("--text-secondary"));
-    txt.setAttribute("font-weight", "600");
-    svg.append(txt);
-  }
-
-  // legend (always for >= 2 series)
-  if (data.series.length >= 2) {
-    const legend = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    legend.setAttribute("transform", `translate(${m.l + 4}, 14)`);
-    let lx = 0;
-    for (const s of data.series) {
-      const keyLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      keyLine.setAttribute("x1", lx); keyLine.setAttribute("y1", 0);
-      keyLine.setAttribute("x2", lx + 16); keyLine.setAttribute("y2", 0);
-      keyLine.setAttribute("stroke", s.color); keyLine.setAttribute("stroke-width", "2");
-      if (s.dashed) keyLine.setAttribute("stroke-dasharray", "6 4");
-      legend.append(keyLine);
-      const txt = svgText(s.label, lx + 21, 3.5, "start", "11px", cssVar("--text-secondary"));
-      legend.append(txt);
-      lx += 21 + txt.getComputedTextLength() + 16;
-    }
-    svg.append(legend);
-  }
-
-  // crosshair overlay (full plot area = generous hit target)
-  const overlay = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  overlay.setAttribute("x", m.l); overlay.setAttribute("y", m.t);
-  overlay.setAttribute("width", pw); overlay.setAttribute("height", ph);
-  overlay.setAttribute("fill", "transparent");
-  const cross = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  cross.setAttribute("y1", m.t); cross.setAttribute("y2", m.t + ph);
-  cross.setAttribute("stroke", cssVar("--text-muted")); cross.setAttribute("stroke-width", "1");
-  cross.style.display = "none";
-  const crossDots = data.series.map(s => {
-    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    c.setAttribute("r", "4"); c.setAttribute("fill", s.color);
-    c.setAttribute("stroke", cssVar("--surface-1")); c.setAttribute("stroke-width", "2");
-    c.style.display = "none";
-    svg.append(c);
-    return c;
+    c.paths[si].setAttribute("d", d);
+    c.endDots[si].setAttribute("cx", xAt(n - 1));
+    c.endDots[si].setAttribute("cy", yAt(s.v[n - 1]));
   });
-  svg.append(cross, overlay);
+  for (const L of endInfos) {
+    const s = data.series[L.si];
+    const endY = yAt(s.v[n - 1]);
+    c.endLabels[L.si].setAttribute("y", L.y + 3.5);
+    c.endLabels[L.si].textContent = `${s.label} ${L.value.toFixed(1)}`;
+    c.leads[L.si].style.display = Math.abs(L.y - endY) > 7 ? "" : "none";
+    c.leads[L.si].setAttribute("y1", endY);
+    c.leads[L.si].setAttribute("y2", L.y);
+  }
 
-  const tip = document.createElement("div");
-  tip.className = "twin-tip";
-  tip.style.display = "none";
-  tip.style.position = "absolute";
-  tip.style.pointerEvents = "none";
-  container.style.position = "relative";
-  container.append(tip);
+  // restore the hover readout at its previous x position
+  if (c.hoverI != null && c.hoverI < n) showCross(c, c.hoverI);
+  else hideCross(c);
+}
 
-  const showAt = (i) => {
-    cross.style.display = "";
-    cross.setAttribute("x1", xAt(i)); cross.setAttribute("x2", xAt(i));
-    data.series.forEach((s, k) => {
-      crossDots[k].style.display = "";
-      crossDots[k].setAttribute("cx", xAt(i));
-      crossDots[k].setAttribute("cy", yAt(s.v[i]));
-    });
-    tip.style.display = "";
-    tip.innerHTML = `<div class="tip-name">${fmtTime(data.x[i])}</div>` +
-      data.series.map(s =>
-        `<div class="tip-row"><span style="display:inline-block;width:14px;height:3px;background:${s.color};margin-right:5px;vertical-align:middle"></span>` +
-        `${escapeHTML(s.label)}: <b style="color:${cssVar("--text-primary")}">${s.v[i].toFixed(1)} kW</b></div>`).join("");
-    const px = (i / (n - 1)) * pw;
-    tip.style.left = Math.min(px + m.l + 12, width - 190) + "px";
-    tip.style.top = Math.max(yAt(Math.max(...data.series.map(s => s.v[i]))) - 8, 4) + "px";
-  };
-  const hide = () => { cross.style.display = "none"; crossDots.forEach(c => c.style.display = "none"); tip.style.display = "none"; };
-  overlay.addEventListener("mousemove", (e) => {
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left - m.l;
-    const i = Math.max(0, Math.min(n - 1, Math.round((x / pw) * (n - 1))));
-    showAt(i);
-    S._mainHover = { key, i };
+function showCross(c, i) {
+  const { data, m, width, height } = c;
+  if (!data) return;
+  const n = data.x.length;
+  const pw = width - m.l - m.r, ph = height - m.t - m.b;
+  const allV = data.series.flatMap(s => s.v);
+  let yMin = Math.min(0, ...allV), yMax = Math.max(1, ...allV);
+  const step = niceStep((yMax - yMin) / 4);
+  yMax = Math.ceil(yMax / step) * step;
+  yMin = Math.floor(yMin / step) * step;
+  const xAt = i => m.l + (n > 1 ? (i / (n - 1)) * pw : 0);
+  const yAt = v => m.t + ph - ((v - yMin) / (yMax - yMin)) * ph;
+  c.cross.style.display = "";
+  c.cross.setAttribute("x1", xAt(i)); c.cross.setAttribute("x2", xAt(i));
+  data.series.forEach((s, k) => {
+    c.crossDots[k].style.display = "";
+    c.crossDots[k].setAttribute("cx", xAt(i));
+    c.crossDots[k].setAttribute("cy", yAt(s.v[i]));
   });
-  overlay.addEventListener("mouseleave", hide);
+  c.tip.style.display = "";
+  c.tip.innerHTML = `<div class="tip-name">${fmtTime(data.x[i])}</div>` +
+    data.series.map(s =>
+      `<div class="tip-row"><span style="display:inline-block;width:14px;height:3px;background:${s.color};margin-right:5px;vertical-align:middle"></span>` +
+      `${escapeHTML(s.label)}: <b style="color:${cssVar("--text-primary")}">${s.v[i].toFixed(1)} kW</b></div>`).join("");
+  c.tip.style.left = Math.min(xAt(i) + m.l + 12, width - 190) + "px";
+  c.tip.style.top = Math.max(yAt(Math.max(...data.series.map(s => s.v[i]))) - 8, 4) + "px";
+}
 
-  container.textContent = "";
-  container.append(svg, tip);
-  if (S._mainHover && S._mainHover.key === key && S._mainHover.i < n) showAt(S._mainHover.i);
+function hideCross(c) {
+  c.cross.style.display = "none";
+  c.crossDots.forEach(d => d.style.display = "none");
+  c.tip.style.display = "none";
+}
+
+function renderLineChart(container, data) {
+  // data: { key, x: [t], series: [{key, label, color, dashed, v: [...]}], height }
+  if (S.tables.has(data.key)) { renderChartTable(container, data); return; }
+  const width = Math.max(container.clientWidth || 600, 320);
+  chartInstance(container, data, width);
+}
+
+function renderChartTable(container, data) {
+  const key = data.key;
+  const seriesSig = data.series.map(s => s.key).join(",");
+  const shapeKey = `${seriesSig}|${document.documentElement.dataset.theme}`;
+  let t = tableCache[key];
+  if (!t || t.shapeKey !== shapeKey) {
+    const table = document.createElement("table");
+    table.className = "chart-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML = `<tr><th>Time</th>${data.series.map(s => `<th>${escapeHTML(s.label)} (kW)</th>`).join("")}</tr>`;
+    const tbody = document.createElement("tbody");
+    table.append(thead, tbody);
+    t = { shapeKey, table, tbody, rows: [] };
+    tableCache[key] = t;
+    container.textContent = "";
+    container.append(table);
+  }
+  // window of the latest ~24 rows; cells patched in place, rows added/removed as needed
+  const n = data.x.length;
+  const step = Math.max(1, Math.floor(n / 24));
+  const indices = [];
+  for (let i = n - 1; i >= 0; i -= step) indices.unshift(i);
+  while (t.rows.length < indices.length) {
+    const tr = document.createElement("tr");
+    tr.append(document.createElement("td"));
+    data.series.forEach(() => tr.append(document.createElement("td")));
+    t.rows.push(tr);
+    t.tbody.append(tr);
+  }
+  while (t.rows.length > indices.length) t.rows.pop().remove();
+  t.rows.forEach((tr, r) => {
+    const i = indices[r];
+    tr.cells[0].textContent = fmtTime(data.x[i]);
+    data.series.forEach((s, si) => { tr.cells[si + 1].textContent = s.v[i].toFixed(1); });
+  });
 }
 
 function svgText(text, x, y, anchor, size, color) {
@@ -366,18 +580,6 @@ function svgText(text, x, y, anchor, size, color) {
   t.setAttribute("fill", color);
   t.setAttribute("font-family", "system-ui, -apple-system, 'Segoe UI', sans-serif");
   return t;
-}
-
-function chartTableHTML(data) {
-  const rows = [];
-  const step = Math.max(1, Math.floor(data.x.length / 24));
-  for (let i = data.x.length - 1; i >= 0; i -= step) {
-    rows.push(`<tr><td>${fmtTime(data.x[i])}</td>` +
-      data.series.map(s => `<td>${s.v[i].toFixed(1)}</td>`).join("") + `</tr>`);
-  }
-  return `<table class="chart-table"><thead><tr><th>Time</th>` +
-    data.series.map(s => `<th>${escapeHTML(s.label)} (kW)</th>`).join("") +
-    `</tr></thead><tbody>${rows.join("")}</tbody></table>`;
 }
 
 function escapeHTML(str) {
@@ -743,6 +945,9 @@ const EXTRA_LABELS = {
 function renderDrawer() {
   const d = S.device;
   if (!d) return;
+  // the drawer body is rebuilt, so the persistent chart/table instances for it go with it
+  delete chartCache.dev;
+  delete tableCache.dev;
   $("#dev-name").textContent = d.name;
   const st = STATUS[d.status] || STATUS.ok;
   const body = $("#dev-body");
@@ -942,6 +1147,10 @@ function wireControls() {
     const root = document.documentElement;
     root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
     S._mainHover = null;
+    // colors are baked into the persistent skeletons, so rebuild them on theme change
+    for (const k of Object.keys(chartCache)) delete chartCache[k];
+    for (const k of Object.keys(tableCache)) delete tableCache[k];
+    mix.mode = null;
     renderMainChart();
     if (S.device) renderDrawer();
     renderMix();

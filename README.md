@@ -196,3 +196,14 @@ The offline rule engine is always available. Claude enrichment remains optional 
 
 The sensor dataset bridge is based on the team's Ali PV sensor simulation dataset. The live project repository is maintained at `medeai68/energy-platform`.
 
+
+## License
+
+MIT - see [LICENSE](LICENSE).
+
+## Credits
+
+- Digital twin, simulation engine, anomaly detection & AI agent: medeai68
+- Energy Intelligence layer & sensor dataset bridge: Stephen (PR #2)
+- Original sensor dataset bridge: Mohammed (PR #1)
+- PV sensor dataset pipeline: Ali (makaynwalu/Solar-Energy-Enterprise-AI-Monitoring-Simulation-System)

@@ -50,9 +50,12 @@ class TestIntelligence(unittest.TestCase):
     def test_engine_persists(self):
         with tempfile.TemporaryDirectory() as d:
             ei = EnergyIntelligence(db_path=f"{d}/energy.db")
-            result = ei.analyze(snapshot())
-            self.assertIn("recommendations", result)
-            self.assertEqual(len(ei.history(1)), 1)
+            try:
+                result = ei.analyze(snapshot())
+                self.assertIn("recommendations", result)
+                self.assertEqual(len(ei.history(1)), 1)
+            finally:
+                ei.close()
 
 
 if __name__ == "__main__":
