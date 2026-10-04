@@ -47,3 +47,8 @@ class IntelligenceStore:
              "intelligence": json.loads(r[4])}
             for r in rows
         ]
+
+    def close(self):
+        """Close the SQLite connection (required on Windows before deleting the file)."""
+        with self.lock:
+            self.conn.close()

@@ -41,3 +41,7 @@ class EnergyIntelligence:
 
     def history(self, limit=100):
         return self.store.recent(limit)
+
+    def close(self):
+        """Close the underlying database connection."""
+        self.store.close()

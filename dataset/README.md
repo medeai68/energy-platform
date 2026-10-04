@@ -42,3 +42,9 @@ CSV -> classify_row -> adapter -> diagnose -> primary_fault
 ```
 
 path against `fault_type`, rather than reporting classifier-only accuracy.
+
+## Source
+
+Contributed by a team member from their repository:
+<https://github.com/makaynwalu/Solar-Energy-Enterprise-AI-Monitoring-Simulation-System>
+

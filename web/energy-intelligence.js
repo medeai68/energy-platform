@@ -51,11 +51,30 @@ function ensurePanel() {
   ei$("ei-report").addEventListener("click", showReport);
 }
 
+function eiIssuesHTML(issues) {
+  return issues.length ? issues.slice(0, 4).map(e => `
+    <div class="ei-item">
+      <div><strong>${eiEsc(e.device_name)}</strong> <span class="ei-badge">${eiEsc(e.severity)}</span></div>
+      <div>${eiEsc(e.message)}</div>
+      <small>Impact ${Number(e.impact_kw || 0).toFixed(2)} kW · priority ${Number(e.priority_score || 0).toFixed(0)}/100</small>
+    </div>`).join("") : `<div class="ei-empty">No active priority issues.</div>`;
+}
+
+function eiRecsHTML(recs) {
+  return recs.length ? recs.slice(0, 4).map(r => `
+    <div class="ei-item">
+      <strong>${eiEsc(r.priority)} · ${eiEsc(r.device_name || r.device_id)}</strong>
+      <div>${eiEsc(r.action)}</div>
+      <small>${eiEsc(r.reason)}</small>
+    </div>`).join("") : `<div class="ei-empty">No corrective actions required.</div>`;
+}
+
 function renderIntelligence(data) {
   EI.data = data;
   ensurePanel();
   if (!ei$("ei-score")) return;
 
+  // scalar readouts: patched in place, no DOM teardown (keeps scroll position stable)
   const score = Number(data.health_score || 0);
   ei$("ei-score").textContent = `${score.toFixed(0)}/100`;
   ei$("ei-score").className = `ei-score-value ${eiScoreClass(score)}`;
@@ -67,34 +86,44 @@ function renderIntelligence(data) {
   ei$("ei-cost").textContent = `$${Number(data.projected_daily_waste_cost || 0).toFixed(2)}`;
   ei$("ei-co2").textContent = `${Number(data.projected_daily_waste_co2_kg || 0).toFixed(1)} kg`;
 
+  // health bars: built once, widths patched
+  if (!EI.bars) {
+    const wrap = ei$("ei-components");
+    wrap.textContent = "";
+    EI.bars = ["Efficiency", "Equipment", "Renewable", "Grid independence", "Sensors"].map(name => {
+      const div = document.createElement("div");
+      div.className = "ei-bar";
+      const sp = document.createElement("span"); sp.textContent = name;
+      const b = document.createElement("b");
+      const i = document.createElement("i");
+      const em = document.createElement("em");
+      i.append(em);
+      div.append(sp, b, i);
+      wrap.append(div);
+      return { b, em };
+    });
+  }
   const components = data.health_components || {};
-  ei$("ei-components").innerHTML = Object.entries({
-    Efficiency: components.efficiency,
-    Equipment: components.equipment,
-    Renewable: components.renewable,
-    "Grid independence": components.grid,
-    Sensors: components.sensors
-  }).map(([name, value]) => `
-    <div class="ei-bar">
-      <span>${eiEsc(name)}</span><b>${Number(value || 0).toFixed(0)}</b>
-      <i><em style="width:${Math.max(0, Math.min(100, Number(value || 0)))}%"></em></i>
-    </div>`).join("");
+  const comps = ["efficiency", "equipment", "renewable", "grid", "sensors"].map(k => components[k]);
+  EI.bars.forEach((bar, k) => {
+    const v = Number(comps[k] || 0);
+    bar.b.textContent = v.toFixed(0);
+    bar.em.style.width = `${Math.max(0, Math.min(100, v))}%`;
+  });
 
+  // lists: rebuilt only when their content actually changes
   const issues = data.prioritized_events || [];
-  ei$("ei-issues").innerHTML = issues.length ? issues.slice(0, 4).map(e => `
-    <div class="ei-item">
-      <div><strong>${eiEsc(e.device_name)}</strong> <span class="ei-badge">${eiEsc(e.severity)}</span></div>
-      <div>${eiEsc(e.message)}</div>
-      <small>Impact ${Number(e.impact_kw || 0).toFixed(2)} kW · priority ${Number(e.priority_score || 0).toFixed(0)}/100</small>
-    </div>`).join("") : `<div class="ei-empty">No active priority issues.</div>`;
-
   const recs = data.recommendations || [];
-  ei$("ei-recommendations").innerHTML = recs.length ? recs.slice(0, 4).map(r => `
-    <div class="ei-item">
-      <strong>${eiEsc(r.priority)} · ${eiEsc(r.device_name || r.device_id)}</strong>
-      <div>${eiEsc(r.action)}</div>
-      <small>${eiEsc(r.reason)}</small>
-    </div>`).join("") : `<div class="ei-empty">No corrective actions required.</div>`;
+  const issuesJson = JSON.stringify(issues.slice(0, 4));
+  const recsJson = JSON.stringify(recs.slice(0, 4));
+  if (EI.issuesJson !== issuesJson) {
+    EI.issuesJson = issuesJson;
+    ei$("ei-issues").innerHTML = eiIssuesHTML(issues);
+  }
+  if (EI.recsJson !== recsJson) {
+    EI.recsJson = recsJson;
+    ei$("ei-recommendations").innerHTML = eiRecsHTML(recs);
+  }
 }
 
 async function pollIntelligence() {
