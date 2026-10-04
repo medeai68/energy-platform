@@ -56,22 +56,24 @@ async function poll() {
   renderMix();
   renderAlerts();
   renderMainChart();
-  if (S.deviceId) refreshDevice(false);
+  if (S.deviceId) refreshDevice();
 }
 
-async function refreshDevice(force) {
+async function refreshDevice() {
   try {
     const r = await fetch("/api/device/" + S.deviceId);
     const detail = await r.json();
     if (detail.error) { closeDrawer(); return; }
-    const key = JSON.stringify([detail.actual, detail.expected, detail.status,
-      detail.faults.map(f => f.active), detail.history.length, detail.anomaly]);
-    if (force || key !== S._devKey) { S._devKey = key; S.device = detail; renderDrawer(); }
+    S.device = detail;
+    // full build only when first opened or when switching devices; otherwise
+    // patch in place so the drawer's scroll position is preserved
+    if (!S.devEls || S.devEls.deviceId !== detail.id) renderDrawer();
+    else updateDrawer();
   } catch (e) { /* ignore */ }
 }
 
 setInterval(poll, 1000);
-setInterval(() => { if (S.deviceId) refreshDevice(true); }, 5000);
+setInterval(() => { if (S.deviceId) refreshDevice(); }, 5000);
 
 /* ---------------- header clock ---------------- */
 
@@ -923,14 +925,15 @@ function startTwinLoop() {
 
 function openDrawer(id) {
   S.deviceId = id;
-  S._devKey = null;
+  S.devEls = null;
   $("#device-drawer").classList.remove("hidden");
-  refreshDevice(true);
+  refreshDevice();
 }
 
 function closeDrawer() {
   S.deviceId = null;
   S.device = null;
+  S.devEls = null;
   S.aiResult = null;
   $("#device-drawer").classList.add("hidden");
 }
@@ -942,14 +945,36 @@ const EXTRA_LABELS = {
   dimming: ["Dimming level", ""], occupancy: ["Occupancy", ""],
 };
 
+function formatExtra(k, v) {
+  let text = v;
+  if (k === "efficiency" && v != null) text = (v * 100).toFixed(0) + "%";
+  if (k === "duty" && v != null) text = (v * 100).toFixed(0) + "%";
+  if (k === "dimming" && v != null) text = (v * 100).toFixed(0) + "%";
+  if (k === "occupancy" && v != null) text = (v * 100).toFixed(0) + "%";
+  const [, unit] = EXTRA_LABELS[k] || [k, ""];
+  return v == null ? "—" : String(text) + (unit ? " " + unit : "");
+}
+
+function devChartData(d) {
+  return {
+    key: "dev",
+    x: d.history.map(p => p.t),
+    series: [
+      { key: "actual", label: "Actual", color: cssVar("--series-1"), v: d.history.map(p => p.actual) },
+      { key: "expected", label: "Expected", color: cssVar("--series-2"), dashed: true, v: d.history.map(p => p.expected) },
+    ],
+    height: 190,
+  };
+}
+
 function renderDrawer() {
   const d = S.device;
   if (!d) return;
-  // the drawer body is rebuilt, so the persistent chart/table instances for it go with it
+  // Full build: only on open or when switching devices. Later refreshes patch
+  // values in place via updateDrawer() so the drawer scroll position survives.
   delete chartCache.dev;
   delete tableCache.dev;
   $("#dev-name").textContent = d.name;
-  const st = STATUS[d.status] || STATUS.ok;
   const body = $("#dev-body");
   body.textContent = "";
 
@@ -958,19 +983,20 @@ function renderDrawer() {
   row.className = "dev-status-row";
   const badge = document.createElement("span");
   badge.className = "status-badge";
-  badge.style.color = cssVar(st.color);
-  badge.style.borderColor = cssVar(st.color);
-  badge.innerHTML = `<span class="dot" style="background:${cssVar(st.color)}"></span>${st.glyph} ${st.label}`;
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  const badgeLabel = document.createTextNode("");
+  badge.append(dot, badgeLabel);
   const big = document.createElement("span");
   big.className = "dev-big";
-  big.textContent = `${d.actual.toFixed(1)} kW `;
+  const bigText = document.createTextNode("");
   const small = document.createElement("small");
-  small.textContent = `actual · ${d.expected.toFixed(1)} kW expected (${d.rating} kW rated)`;
-  big.append(small);
+  big.append(bigText, small);
   row.append(badge, big);
   body.append(row);
 
-  // extra fields
+  // live telemetry (labels fixed; values patched)
+  const extraCells = {};
   const extras = Object.entries(d.extra || {});
   if (extras.length) {
     const block = document.createElement("div");
@@ -978,20 +1004,22 @@ function renderDrawer() {
     block.innerHTML = "<h3>Live telemetry</h3>";
     const grid = document.createElement("div");
     grid.className = "extra-grid";
-    for (const [k, v] of extras) {
-      const [label, unit] = EXTRA_LABELS[k] || [k, ""];
-      let text = v;
-      if (k === "efficiency" && v != null) text = (v * 100).toFixed(0) + "%";
-      if (k === "duty" && v != null) text = (v * 100).toFixed(0) + "%";
-      if (k === "dimming" && v != null) text = (v * 100).toFixed(0) + "%";
-      if (k === "occupancy" && v != null) text = (v * 100).toFixed(0) + "%";
-      grid.innerHTML += `<span class="k">${escapeHTML(label)}</span><span class="v">${v == null ? "—" : escapeHTML(String(text)) + (unit ? " " + unit : "")}</span>`;
+    for (const [k] of extras) {
+      const [label] = EXTRA_LABELS[k] || [k, ""];
+      const kEl = document.createElement("span");
+      kEl.className = "k";
+      kEl.textContent = label;
+      const vEl = document.createElement("span");
+      vEl.className = "v";
+      extraCells[k] = vEl;
+      grid.append(kEl, vEl);
     }
     block.append(grid);
     body.append(block);
   }
 
-  // fault injection
+  // fault injection (rows fixed; active state patched)
+  const faultBtns = {};
   const fb = document.createElement("div");
   fb.className = "dev-block";
   fb.innerHTML = "<h3>Virtual fault injection</h3>";
@@ -1004,22 +1032,22 @@ function renderDrawer() {
         <div class="fault-desc">${escapeHTML(f.description)}</div>
       </div>`;
     const btn = document.createElement("button");
-    btn.className = "fault-btn " + (f.active ? "clear" : "inject");
-    btn.textContent = f.active ? "✓ Clear" : "Inject";
+    btn.className = "fault-btn";
     btn.addEventListener("click", async () => {
       await fetch("/api/fault", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ device_id: d.id, fault_id: f.id, active: !f.active }),
       });
-      refreshDevice(true);
+      refreshDevice();
     });
+    faultBtns[f.id] = btn;
     rowF.append(btn);
     fb.append(rowF);
   }
   body.append(fb);
 
-  // expected vs actual chart
+  // expected vs actual chart (stable container; the chart engine patches it in place)
   const ch = document.createElement("div");
   ch.className = "dev-block";
   ch.innerHTML = `<h3>Expected vs actual · kW <button class="table-toggle" style="float:right" data-table="dev">table</button></h3>`;
@@ -1028,51 +1056,63 @@ function renderDrawer() {
   chartEl.className = "chart";
   ch.append(chartEl);
   body.append(ch);
-  const hist = d.history;
-  if (hist.length >= 2) {
-    renderLineChart(chartEl, {
-      key: "dev",
-      x: hist.map(p => p.t),
-      series: [
-        { key: "actual", label: "Actual", color: cssVar("--series-1"), v: hist.map(p => p.actual) },
-        { key: "expected", label: "Expected", color: cssVar("--series-2"), dashed: true, v: hist.map(p => p.expected) },
-      ],
-      height: 190,
-    });
-  } else {
-    chartEl.innerHTML = '<p class="alert-empty">Collecting data…</p>';
-  }
 
-  // AI diagnosis
+  // AI diagnosis box (persists; only the result block below it is replaced)
   const ai = document.createElement("div");
   ai.className = "dev-block";
   ai.innerHTML = "<h3>AI diagnosis</h3>";
   const box = document.createElement("div");
   box.className = "ai-box";
-  const btn = document.createElement("button");
-  btn.className = "ai-primary";
-  btn.textContent = "✨ Ask AI to diagnose";
-  btn.addEventListener("click", () => askAI(d.id));
-  box.append(btn);
-  if (d.anomaly) {
-    const note = document.createElement("p");
-    note.className = "alert-empty";
-    note.innerHTML = `Active anomaly: <b>${escapeHTML(d.anomaly.message)}</b>`;
-    box.append(note);
-  } else {
-    const note = document.createElement("p");
-    note.className = "alert-empty";
-    note.textContent = "No active anomaly. Inject a fault above, wait a few seconds for detection, then ask the AI.";
-    box.append(note);
-  }
+  const aiBtn = document.createElement("button");
+  aiBtn.className = "ai-primary";
+  aiBtn.textContent = "✨ Ask AI to diagnose";
+  aiBtn.addEventListener("click", () => askAI(d.id));
+  const aiNote = document.createElement("p");
+  aiNote.className = "alert-empty";
+  box.append(aiBtn, aiNote);
   ai.append(box);
   body.append(ai);
 
+  S.devEls = {
+    deviceId: d.id, badge, dot, badgeLabel, bigText, small,
+    extraCells, faultBtns, chartEl, aiBtn, aiNote, aiResultBlock: null,
+  };
+
+  updateDrawer();
   if (S.aiResult && S.aiResult.device_id === d.id) renderAIResult(body);
 }
 
+function updateDrawer() {
+  // patch in place: values, badges and the chart change; the DOM stays put
+  const d = S.device;
+  const els = S.devEls;
+  if (!d || !els || els.deviceId !== d.id) return;
+  const st = STATUS[d.status] || STATUS.ok;
+  els.badge.style.color = cssVar(st.color);
+  els.badge.style.borderColor = cssVar(st.color);
+  els.dot.style.background = cssVar(st.color);
+  els.badgeLabel.textContent = `${st.glyph} ${st.label}`;
+  els.bigText.textContent = `${d.actual.toFixed(1)} kW `;
+  els.small.textContent = `actual · ${d.expected.toFixed(1)} kW expected (${d.rating} kW rated)`;
+  for (const [k, cell] of Object.entries(els.extraCells)) {
+    cell.textContent = formatExtra(k, d.extra ? d.extra[k] : undefined);
+  }
+  for (const f of d.faults) {
+    const btn = els.faultBtns[f.id];
+    if (!btn) continue;
+    btn.className = "fault-btn " + (f.active ? "clear" : "inject");
+    btn.textContent = f.active ? "✓ Clear" : "Inject";
+  }
+  if (d.anomaly) {
+    els.aiNote.innerHTML = `Active anomaly: <b>${escapeHTML(d.anomaly.message)}</b>`;
+  } else {
+    els.aiNote.textContent = "No active anomaly. Inject a fault above, wait a few seconds for detection, then ask the AI.";
+  }
+  if (d.history.length >= 2) renderLineChart(els.chartEl, devChartData(d));
+}
+
 async function askAI(deviceId) {
-  const btn = document.querySelector(".ai-primary");
+  const btn = S.devEls && S.devEls.aiBtn;
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Diagnosing…"; }
   try {
     const r = await fetch("/api/ai/diagnose", {
@@ -1082,8 +1122,13 @@ async function askAI(deviceId) {
     });
     const res = await r.json();
     S.aiResult = { device_id: deviceId, diagnosis: res.diagnosis };
-    renderDrawer();
-  } catch (e) {
+    // replace the previous AI result block without rebuilding the drawer
+    if (S.devEls && S.devEls.aiResultBlock) {
+      S.devEls.aiResultBlock.remove();
+      S.devEls.aiResultBlock = null;
+    }
+    renderAIResult($("#dev-body"));
+  } finally {
     if (btn) { btn.disabled = false; btn.textContent = "✨ Ask AI to diagnose"; }
   }
 }
@@ -1117,6 +1162,7 @@ function renderAIResult(body) {
   }
   block.append(box);
   body.append(block);
+  if (S.devEls) S.devEls.aiResultBlock = block;
 }
 
 /* ---------------- controls ---------------- */
