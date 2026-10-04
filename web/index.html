@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Energy AI Platform — Digital Twin &amp; Diagnostics</title>
+<title>Energy AI Platform — Digital Twin &amp; Energy Intelligence</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="energy-intelligence.css">
 </head>
 <body>
-
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark">⚡</span>
     <span class="brand-name">Energy AI Platform</span>
-    <span class="brand-tag">Digital Twin · Virtual Sensors · AI Diagnostics</span>
+    <span class="brand-tag">Digital Twin · Virtual Sensors · AI Diagnostics · Energy Intelligence</span>
   </div>
   <div class="clock" id="clock">
     Day <b id="clock-day">1</b> · <b id="clock-time">06:00</b>
@@ -41,9 +41,7 @@
     <button id="theme-btn" class="btn" title="Toggle light / dark">◐</button>
   </div>
 </header>
-
 <main class="layout">
-
   <section class="card twin-card">
     <div class="card-head">
       <h2>Digital Twin</h2>
@@ -58,7 +56,6 @@
       <div id="twin-tip" class="twin-tip hidden"></div>
     </div>
   </section>
-
   <aside class="side">
     <div class="kpi-row">
       <div class="kpi" id="kpi-solar">
@@ -82,7 +79,6 @@
         <div class="kpi-sub" id="kpi-suff-sub">—</div>
       </div>
     </div>
-
     <section class="card">
       <div class="card-head">
         <h2>Energy mix today</h2>
@@ -90,7 +86,6 @@
       </div>
       <div id="mix-chart"></div>
     </section>
-
     <section class="card alerts-card">
       <div class="card-head">
         <h2>Alerts</h2>
@@ -99,7 +94,6 @@
       <ul id="alerts" class="alerts"></ul>
     </section>
   </aside>
-
   <section class="card chart-card">
     <div class="card-head">
       <h2>Power flow</h2>
@@ -114,7 +108,6 @@
     </div>
     <div id="main-chart" class="chart"></div>
   </section>
-
 </main>
 
 <aside id="device-drawer" class="drawer hidden" aria-label="Device detail">
@@ -126,5 +119,6 @@
 </aside>
 
 <script src="app.js"></script>
+<script src="energy-intelligence.js"></script>
 </body>
 </html>

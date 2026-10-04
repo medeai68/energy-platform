@@ -1,117 +1,198 @@
-# Energy AI Platform — Digital Twin & Diagnostics
+# Energy AI Platform — Digital Twin, AI Diagnostics & Energy Intelligence
 
-AI-powered energy monitoring and intelligent diagnosis for solar-energy
-enterprises. A 2D digital twin with virtual sensors simulates a commercial
-building (rooftop solar, inverter, HVAC, lighting, plug loads) **without any
-physical hardware**, detects abnormal consumption by comparing actual power
-against an expected model, and an AI agent explains probable causes and
-recommends corrective actions. Operators can inject virtual faults directly
-through the visualization.
+AI-powered energy monitoring and intelligent diagnosis for solar-energy enterprises. The platform combines a 2D digital twin, virtual sensors, labeled sensor-fault data, anomaly detection, an explainable AI agent, and an Energy Intelligence layer that quantifies waste and recommends actions.
 
-**Zero dependencies** — pure Python standard library for the backend, vanilla
-HTML/JS/Canvas for the dashboard.
+**Zero runtime dependencies:** Python standard library backend + vanilla HTML/JS/Canvas dashboard. Claude enrichment remains optional.
 
-## Run it
+## Run
 
 ```bash
 cd energy-platform
-python server.py            # optional: --port 8000
+python server.py --port 8000
 ```
 
-Open <http://localhost:8000>.
+Open http://localhost:8000.
 
-## 2-minute demo
+## End-to-end demo
 
-1. The twin starts at day 1, 06:00 at 60× speed (1 sim-day ≈ 24 s).
-2. Click **HVAC (3 units)** → inject **Excessive consumption**.
-3. Within ~5 seconds an alert appears: *"HVAC consumption above expected (…)"*.
-4. Click **Ask AI** → ranked probable causes (refrigerant leak, dirty coils…)
-   with confidence and concrete corrective actions.
-5. Try other signatures: **Soiling** on the Solar Array, **Efficiency drop**
-   on the Inverter, **Lights on at night** (wait for night or speed up to
-   300×), **Vampire load** on Plug Loads. Clear a fault the same way.
-6. Watch the power-flow chart: solar generation (blue), building load
-   (orange), grid exchange (aqua). Export happens when generation exceeds
-   load.
-
-Every chart has a **table** toggle (WCAG-clean twin), and the dashboard
-ships dark-first with a validated light theme (◐ button).
+1. Start the platform.
+2. Click **HVAC** and inject **Excessive consumption**.
+3. Wait for the sustained anomaly.
+4. Click **Ask AI** to receive probable causes and corrective actions.
+5. Open **Energy Intelligence** to see:
+   - Energy Health Score
+   - current excess consumption
+   - projected daily waste
+   - cost impact
+   - CO2 impact
+   - ranked priority
+   - recommended action
+6. Use **AI Energy Report** for an operator summary.
+7. Use the scenario API to estimate savings if a fault is fixed.
+8. Clear the fault and watch the health score recover.
 
 ## Architecture
 
+```text
+Digital Twin
+   |
+   +--> Expected vs Actual Telemetry
+              |
+              +--> Equipment Anomaly Detector
+              |
+              +--> Sensor Dataset Bridge
+                       |
+                       +--> classify_row()  <-- single source of truth
+              |
+              v
+         AI Diagnostic Agent
+              |
+              v
+     Energy Intelligence Engine
+       |       |       |       |
+       v       v       v       v
+    Health   Waste    Cost    CO2
+     Score   Impact   Impact  Impact
+       |       |       |
+       +-------+-------+
+               |
+               v
+        Priority + Recommendations
+               |
+               v
+           Dashboard
+               |
+               v
+        SQLite history/reports
 ```
+
+## Repository layout
+
+```text
 energy-platform/
-├── server.py          # stdlib ThreadingHTTPServer + JSON API (see below)
+├── server.py
 ├── sim/
-│   ├── engine.py      # sim clock, weather, 5 device models, history, kWh
-│   └── faults.py      # virtual fault catalog (14 injectable faults)
+│   ├── engine.py
+│   └── faults.py
 ├── ai/
-│   ├── anomaly.py     # expected-vs-actual residuals + domain rules
-│   └── agent.py       # rule-based diagnostic KB + optional Claude enrichment
-├── dataset/           # sensor-level PV simulator + labeled fault dataset
-│   ├── sensor_simulator.py   # generates sensor_data.csv (10 fault labels)
-│   ├── sensor_data.csv       # committed dataset (1,000 second-interval rows)
-│   ├── analyze_dataset.py    # statistical report (stdlib only)
-│   └── visualize_data.py     # 10 matplotlib plots (see dataset/README.md)
-└── web/               # dashboard: canvas digital twin, SVG charts, drawer UI
+│   ├── anomaly.py
+│   └── agent.py
+├── dataset/
+│   ├── sensor_data.csv
+│   ├── sensor_simulator.py
+│   ├── adapter.py
+│   ├── sensor_faults.py
+│   ├── validate.py
+│   └── README.md
+├── intelligence/
+│   ├── engine.py
+│   ├── metrics.py
+│   ├── scoring.py
+│   ├── recommendations.py
+│   ├── reports.py
+│   └── persistence.py
+├── tests/
+│   ├── test_dataset_bridge_fixed.py
+│   └── test_intelligence.py
+└── web/
+    ├── index.html
+    ├── app.js
+    ├── style.css
+    ├── energy-intelligence.js
+    └── energy-intelligence.css
 ```
 
-Each tick every device produces two numbers:
+## Sensor dataset bridge
 
-- **expected** — the healthy model for current conditions (irradiance,
-  temperature, schedule, occupancy), *never* affected by faults;
-- **actual** — the virtual sensor reading: expected × fault effects + noise.
+Ali's 1,000-row PV sensor dataset contains labeled faults including voltage bias, drift, dropout, stuck sensor, noise, panel/inverter overheating, power loss and grid-voltage anomalies.
 
-The gap between them is what the detector and the AI agent work on.
+The adapter converts the dataset's **watts to kW** before passing readings into the platform. Missing measured power remains `None`; it is never replaced with the healthy value.
 
-### Device models
+`dataset/adapter.py` calls `dataset.sensor_faults.classify_row()` directly. There is therefore one source of truth for sensor classification.
 
-| Device | Healthy model |
+Validate the real bridge:
+
+```bash
+python -m dataset.validate
+python dataset/validate.py
+```
+
+The validation path is:
+
+```text
+CSV row
+  -> classify_row()
+  -> adapter
+  -> device-shaped telemetry
+  -> diagnose()
+  -> primary_fault
+  -> ground-truth comparison
+```
+
+This is intentionally different from a classifier-only accuracy test.
+
+## Energy Intelligence API
+
+| Endpoint | Purpose |
 |---|---|
-| Solar Array (50 kWp) | irradiance curve (06:00–18:30) × cloud attenuation × cell-temperature derating |
-| Inverter (50 kW) | min(DC in, rating) × 97% efficiency |
-| HVAC (3 × 12 kW) | cooling demand from outdoor temperature → duty cycle |
-| Lighting (6 kW) | 07:00–19:00 schedule with daylight-harvesting dimming |
-| Plug Loads (9 kW) | occupancy curve (95% working hours, 15% overnight) |
+| `GET /api/state` | Digital twin snapshot + current intelligence |
+| `GET /api/intelligence` | Current health, waste, priorities and recommendations |
+| `GET /api/intelligence/report` | Daily operator report |
+| `GET /api/intelligence/history` | Recent persisted intelligence snapshots |
+| `POST /api/intelligence/scenario` | Estimate savings from fixing a device/fault |
+| `POST /api/ai/diagnose` | AI diagnosis for a device |
+| `POST /api/fault` | Inject/clear virtual faults |
+| `POST /api/control` | Simulation controls |
 
-Weather: cloud cover (random walk or forced mode) drives solar output and
-outdoor temperature (daily sinusoid, cooler under cloud).
+Scenario example:
 
-### Anomaly detection
+```json
+{
+  "device_id": "hvac",
+  "reduction_pct": 100,
+  "hours": 8
+}
+```
 
-- Relative residual `(actual − expected) / max(expected, floor)` vs a
-  per-device threshold derived from its noise band; deviations must be
-  sustained 2 ticks to raise an alert and 3 in-bounds ticks to clear.
-- Domain rules catch named signatures: lighting active at night, inverter
-  offline (critical).
-- Severity: warning / serious / critical from residual magnitude.
+The response estimates daily/monthly kWh saved, cost saved and CO2 avoided.
 
-### AI agent
+## Health score
 
-Two engines, one interface (`POST /api/ai/diagnose`):
+The Energy Health Score combines:
 
-1. **Rule-based expert system** (default, offline): fault signatures →
-   ranked causes with confidence + corrective actions.
-2. **Claude enrichment** (optional): if `pip install anthropic` is done and
-   credentials are available (`ANTHROPIC_API_KEY` or `ant auth login`), the
-   telemetry context is sent to `claude-opus-5` with structured JSON output.
-   Any API error falls back to the rule engine automatically.
+- 30% energy efficiency
+- 25% equipment health
+- 20% renewable utilization
+- 15% grid independence
+- 10% sensor health
 
-## API
+Sensor health is kept separate from equipment health so a bad sensor does not automatically trigger unnecessary equipment maintenance.
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/state` | Full snapshot: sim clock, weather, KPIs, devices, grid, alerts, history |
-| `GET /api/device/<id>` | Device detail: telemetry, fault catalog, expected/actual history |
-| `POST /api/fault` | `{device_id, fault_id, active}` inject / clear a virtual fault |
-| `POST /api/control` | `{action: speed\|pause\|weather\|reset, value}` sim controls |
-| `POST /api/ai/diagnose` | `{device_id}` → causes, confidence, actions, reasoning basis |
+## Persistence
 
-## Roadmap ideas
+The intelligence layer stores recent snapshots in:
 
-- Battery storage (BESS) device + self-consumption optimization
-- Sensor-fault layer (meter drift) to demo "virtual sensor" health checks
-- Persistence (SQLite) for multi-day analytics and reports
-- Multi-facility fleet view, alerts via webhook/email
-- IoT integration path: swap the simulation's noise source for real MQTT/
-  Modbus data — the expected/actual pipeline stays unchanged
+```text
+data/energy_intelligence.db
+```
+
+This file is runtime state and should not be committed.
+
+## Tests
+
+Run:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The important regression is the end-to-end dataset test: a sensor fault must survive the adapter and be named by `diagnose()`.
+
+## Optional Claude enrichment
+
+The offline rule engine is always available. Claude enrichment remains optional and falls back to the rule engine on missing credentials, API errors or missing package.
+
+## Source
+
+The sensor dataset bridge is based on the team's Ali PV sensor simulation dataset. The live project repository is maintained at `medeai68/energy-platform`.
+

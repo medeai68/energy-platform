@@ -14,3 +14,6 @@ Thumbs.db
 
 # Local config (keeps API keys out of the repo)
 .env
+
+# Runtime intelligence data
+data/*.db
