@@ -1,11 +1,7 @@
-"""Energy platform server - zero-dependency stdlib HTTP server.
+"""Energy platform server - stdlib HTTP server.
 
-Run:
-    python server.py [--port 8000]
-
-The simulation engine ticks once per real second in a background thread and
-the web dashboard polls /api/state once per second. No pip installs required
-(the optional Claude AI enrichment needs `pip install anthropic` + a key).
+Includes the Digital Twin, AI diagnostics, sensor dataset bridge and Energy
+Intelligence endpoints. No third-party packages are required.
 """
 
 import json
@@ -18,10 +14,11 @@ from urllib.parse import urlparse
 
 from sim.engine import SimulationEngine
 from ai.agent import diagnose
+from intelligence.engine import EnergyIntelligence
 
 WEB_DIR = Path(__file__).parent / "web"
 engine = SimulationEngine()
-
+intelligence = EnergyIntelligence()
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -37,10 +34,15 @@ def run_engine_loop():
         time.sleep(1.0)
 
 
-class Handler(BaseHTTPRequestHandler):
-    server_version = "EnergyPlatform/0.1"
+def current_snapshot(with_intelligence=True):
+    snap = engine.snapshot()
+    if with_intelligence:
+        snap["intelligence"] = intelligence.analyze(snap, persist=False)
+    return snap
 
-    # ---- helpers ----
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "EnergyPlatform/0.2"
 
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         if isinstance(body, (dict, list)):
@@ -65,15 +67,22 @@ class Handler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
 
-    # ---- routing ----
-
     def do_GET(self):
         path = urlparse(self.path).path
+
         if path == "/":
             self._send(200, (WEB_DIR / "index.html").read_text(encoding="utf-8"),
                        STATIC_TYPES[".html"])
         elif path == "/api/state":
-            self._json(200, engine.snapshot())
+            self._json(200, current_snapshot())
+        elif path == "/api/intelligence":
+            snap = engine.snapshot()
+            self._json(200, intelligence.analyze(snap, persist=True))
+        elif path == "/api/intelligence/report":
+            snap = engine.snapshot()
+            self._json(200, intelligence.report(snap))
+        elif path == "/api/intelligence/history":
+            self._json(200, intelligence.history())
         elif path.startswith("/api/device/"):
             dev_id = path.rsplit("/", 1)[-1]
             detail = engine.device_detail(dev_id)
@@ -81,10 +90,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": f"unknown device '{dev_id}'"})
             else:
                 self._json(200, detail)
-        elif path in ("/app.js", "/style.css"):
+        elif path in ("/app.js", "/style.css", "/energy-intelligence.js", "/energy-intelligence.css"):
             f = WEB_DIR / path.lstrip("/")
             if f.is_file():
-                self._send(200, f.read_text(encoding="utf-8"), STATIC_TYPES[f.suffix])
+                self._send(200, f.read_text(encoding="utf-8"), STATIC_TYPES.get(f.suffix, "text/plain"))
             else:
                 self._json(404, {"error": "not found"})
         elif path == "/favicon.ico":
@@ -100,7 +109,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/fault":
-            ok = engine.set_fault(body.get("device_id"), body.get("fault_id"), bool(body.get("active")))
+            ok = engine.set_fault(body.get("device_id"), body.get("fault_id"),
+                                  bool(body.get("active")))
             self._json(200 if ok else 400, {"ok": ok})
 
         elif path == "/api/control":
@@ -122,6 +132,16 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/ai/diagnose":
             self._diagnose(body)
 
+        elif path == "/api/intelligence/scenario":
+            snap = engine.snapshot()
+            result = intelligence.scenario(
+                snap,
+                device_id=body.get("device_id"),
+                reduction_pct=body.get("reduction_pct", 100),
+                hours=body.get("hours", 8),
+            )
+            self._json(200, result)
+
         else:
             self._json(404, {"error": "not found"})
 
@@ -132,21 +152,31 @@ class Handler(BaseHTTPRequestHandler):
         if device is None:
             self._json(404, {"error": f"unknown device '{dev_id}'"})
             return
-        # Prefer the active anomaly, then the most recent event for this device.
+
         event = next((e for e in snap["anomalies"] if e["device_id"] == dev_id), None)
         if event is None:
             event = next((e for e in snap["events"] if e["device_id"] == dev_id), None)
         if event is None:
-            rel = device["rel"]
-            event = {"severity": "warning", "message": "Current residual outside the expected band",
-                     "device_id": dev_id, "device_name": device["name"],
-                     "day": snap["sim"]["day"], "time": snap["sim"]["time"]}
+            rel = device.get("rel")
+            event = {
+                "severity": "warning",
+                "message": "Current residual outside the expected band",
+                "device_id": dev_id,
+                "device_name": device["name"],
+                "day": snap["sim"]["day"],
+                "time": snap["sim"]["time"],
+            }
         else:
-            rel = device["rel"]
-        self._json(200, {"device": device, "anomaly": event, "diagnosis": diagnose(device, event, rel)})
+            rel = device.get("rel")
+
+        diagnosis = diagnose(device, event, rel)
+        self._json(200, {
+            "device": device,
+            "anomaly": event,
+            "diagnosis": diagnosis,
+        })
 
     def log_message(self, fmt, *args):
-        # concise access log
         print(f"[{time.strftime('%H:%M:%S')}] {self.address_string()} {fmt % args}")
 
 
@@ -158,9 +188,9 @@ def main():
     threading.Thread(target=run_engine_loop, daemon=True, name="sim-engine").start()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print("=" * 62)
-    print("  Energy AI Platform - Digital Twin & Diagnostics")
+    print("  Energy AI Platform - Digital Twin & Energy Intelligence")
     print(f"  Dashboard:  http://localhost:{port}")
-    print("  Demo: click a device -> inject a fault -> watch the AI diagnose it")
+    print("  Demo: inject a fault -> AI diagnosis -> energy impact -> recommendation")
     print("  Stop with Ctrl+C")
     print("=" * 62)
     try:
