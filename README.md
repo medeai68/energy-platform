@@ -1602,6 +1602,7 @@ loopback port with an isolated temporary database.
 | `server.py` | `GET /api/intelligence` persisted an `intelligence_snapshots` row on every dashboard poll; `GET /api/alarms` also called `refresh_anomalies`, writing on every poll. | Both GETs are read-only. Alarm persistence happens in the 10 s sampling loop and immediately after `POST /api/fault`. |
 | `server.py` | POST bodies were read without a size limit; a non-object JSON body caused an attribute error; control values were unchecked (`"false"` paused the simulation, unknown weather returned `ok: true`, a string speed raised). | `Content-Length` is validated before reading with a 64 KiB cap; bodies must be JSON objects; speed/pause/weather/fault fields are type- and range-checked with 400 responses. |
 | `server.py` | `POST /api/ai/diagnose` fabricated a warning event ("Current residual outside the expected band") when the device was healthy. | It now diagnoses only a live active non-operator event and returns `"anomaly": null` otherwise. |
+| `server.py` | Diagnosis used the dashboard's default snapshot: a live anomaly outside the top-10 anomaly window and the 30-event fallback was invisible, so a faulted device could still be reported healthy. | Diagnosis requests `snapshot(full_anomalies=True)`, so every active non-operator anomaly is considered. |
 | `sim/engine.py` | Sensor-layer faults injected on aggregate devices (HVAC, lighting, plugs, inverter, ...) were stored in the catalog but never applied: only leaf devices honoured them. | Aggregate measurements are distorted after their honest sum; the battery's signed flow is handled after its step. Leaves already worked. |
 | `intelligence/metrics.py` | Sensor health ignored live sensor faults (`sensor_drift`, `sensor_stuck`), reporting 100 while equipment health moved. | Score penalties include sensor-layer faults from `device["faults"]` and averages only over devices with sensor evidence, so one bad sensor is not diluted by ~100 healthy ones. |
 | `equipment/store.py` | Read paths (`list_equipment`, `equipment_detail`, `stats`) shared the SQLite connection with the sampling thread without the lock. | Reads hold `self.lock`, matching the existing write paths. |
@@ -1609,7 +1610,7 @@ loopback port with an isolated temporary database.
 
 ### Tests
 
-`tests/test_backend_fixes.py` adds **20** offline regressions (isolated temp
+`tests/test_backend_fixes.py` adds **21** offline regressions (isolated temp
 databases; no live server, no production data):
 
 - reset keeps the same lock and bumps `reset_seq`; a post-reset catch-up
@@ -1620,12 +1621,13 @@ databases; no live server, no production data):
 - POST size, malformed/ non-object JSON, and control/fault validation return
   400 without changing engine state; valid controls still apply;
 - a healthy device diagnoses with no anomaly, a real active anomaly is passed
-  to the diagnosis engine;
+  to the diagnosis engine, and a live anomaly outside the dashboard's top-10
+  / 30-event windows is still diagnosed;
 - GET intelligence/alarms do not write; a fault POST syncs alarms;
 - live series in Unix seconds integrate to the correct kWh and 24 h baseline;
 - `device_detail` carries locked alerts; full snapshots keep >10 alarms.
 
-Full suite: **141 Python tests** (`python -m unittest discover -s tests -q`);
+Full suite: **142 Python tests** (`python -m unittest discover -s tests -q`);
 the suite passed on repeated runs, and `python -m compileall` covered all
 packages. One pre-existing test,
 `tests/test_panels.py::test_fault_isolation_single_panel`, is

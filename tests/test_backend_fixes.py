@@ -354,6 +354,40 @@ class TestDiagnoseDoesNotFabricate(BackendTestBase):
         self.assertEqual(captured["device"]["id"], "p01")
         self.assertEqual(body["diagnosis"]["causes"], ["checked"])
 
+    def test_live_anomaly_outside_the_dashboard_window_is_still_diagnosed(self):
+        """Diagnosis must not inherit the dashboard's display caps.
+
+        Add p01's event first, then thirty operator log entries and ten newer
+        active anomalies. p01 is live but absent from both the default
+        snapshot's ten-anomaly list and its thirty-event history.
+        """
+        self.engine._add_event(
+            "warning", "p01", "Panel P-01", "live p01 anomaly", active=True)
+        for i in range(30):
+            self.engine._add_event(
+                "operator", "op", "Operator", f"log {i}", active=False)
+        for i in range(2, 12):
+            self.engine._add_event(
+                "warning", f"p{i:02d}", f"Panel P-{i:02d}", "active",
+                active=True)
+        default = self.engine.snapshot()
+        self.assertNotIn("p01", [e["device_id"] for e in default["anomalies"]])
+        self.assertNotIn("p01", [e["device_id"] for e in default["events"]])
+
+        captured = {}
+
+        def fake_diagnose(device, event, rel):
+            captured["event"] = event
+            return {"engine": "test", "summary": "stub", "causes": ["checked"]}
+
+        with mock.patch.object(server, "diagnose", fake_diagnose):
+            status, body = self.http(
+                "POST", "/api/ai/diagnose", {"device_id": "p01"})
+        self.assertEqual(status, 200)
+        self.assertIsNotNone(body["anomaly"])
+        self.assertEqual(body["anomaly"]["device_id"], "p01")
+        self.assertEqual(captured["event"]["device_id"], "p01")
+
 
 class TestReadOnlyGets(BackendTestBase):
     def test_intelligence_get_does_not_persist_a_snapshot(self):

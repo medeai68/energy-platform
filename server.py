@@ -600,7 +600,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _diagnose(self, body):
         dev_id = body.get("device_id")
-        snap = engine.snapshot()
+        # Diagnosis must see every live anomaly. The dashboard snapshot caps
+        # its list at ten and its event history at thirty entries, so using it
+        # here can hide a real anomaly on the device being inspected and make
+        # a faulted device look healthy.
+        snap = engine.snapshot(full_anomalies=True)
         device = next((d for d in snap["devices"] if d["id"] == dev_id), None)
         if device is None:
             device = next((d for d in snap.get("panels", []) if d["id"] == dev_id), None)
