@@ -1582,6 +1582,72 @@ added because Phase 11 makes that control open the navigator in one click),
 8000 and the production database were not touched; all browser writes were
 the isolated instance's normal polling.
 
+## Phase 13 — Backend audit and safe verification
+
+This phase audited the backend at commit
+`813eeeb31375470263c5d40c1a7e37ab2103977c` (`phase12-shell-audit`)
+without repeating the completed frontend audit. The running development
+server on port **8019 was not restarted**, and port 8000, the production
+database and the original repository were not touched. All endpoint checks
+below ran against an in-process `ThreadingHTTPServer` on an ephemeral
+loopback port with an isolated temporary database.
+
+### Confirmed defects fixed
+
+| Area | Defect | Fix |
+| --- | --- | --- |
+| `sim/engine.py` | `reset()` re-ran `__init__`, replacing `self.lock` while other threads were inside it; a thread could observe a partially reset engine. | `reset()` rebuilds state under the existing lock via `_build_state()`. |
+| `sim/engine.py`, `equipment/store.py` | After a reset, event ids restart at 1. If the simulation caught up past the previous sample before the next 10 s sample, the old detector saw a forward timestamp, kept the previous epoch, and an old event key could collide with the new one. | The engine exposes a monotonic `sim.reset_seq`; the store starts a new anomaly epoch whenever it changes and closes active anomalies. |
+| `server.py`, `equipment/calculations.py` | Live/imported `measured_at` values are wall-clock Unix **seconds**, but `calculate_energy` expects **minutes**. A 15 s sample was integrated as 15 minutes and the "24 h" baseline covered 24 minutes. | `_energy_block` converts seconds to epoch minutes before integration. Simulated samples remain sim absolute minutes. |
+| `server.py` | `GET /api/intelligence` persisted an `intelligence_snapshots` row on every dashboard poll; `GET /api/alarms` also called `refresh_anomalies`, writing on every poll. | Both GETs are read-only. Alarm persistence happens in the 10 s sampling loop and immediately after `POST /api/fault`. |
+| `server.py` | POST bodies were read without a size limit; a non-object JSON body caused an attribute error; control values were unchecked (`"false"` paused the simulation, unknown weather returned `ok: true`, a string speed raised). | `Content-Length` is validated before reading with a 64 KiB cap; bodies must be JSON objects; speed/pause/weather/fault fields are type- and range-checked with 400 responses. |
+| `server.py` | `POST /api/ai/diagnose` fabricated a warning event ("Current residual outside the expected band") when the device was healthy. | It now diagnoses only a live active non-operator event and returns `"anomaly": null` otherwise. |
+| `sim/engine.py` | Sensor-layer faults injected on aggregate devices (HVAC, lighting, plugs, inverter, ...) were stored in the catalog but never applied: only leaf devices honoured them. | Aggregate measurements are distorted after their honest sum; the battery's signed flow is handled after its step. Leaves already worked. |
+| `intelligence/metrics.py` | Sensor health ignored live sensor faults (`sensor_drift`, `sensor_stuck`), reporting 100 while equipment health moved. | Score penalties include sensor-layer faults from `device["faults"]` and averages only over devices with sensor evidence, so one bad sensor is not diluted by ~100 healthy ones. |
+| `equipment/store.py` | Read paths (`list_equipment`, `equipment_detail`, `stats`) shared the SQLite connection with the sampling thread without the lock. | Reads hold `self.lock`, matching the existing write paths. |
+| `server.py`, `sim/engine.py` | Alarm sync used the dashboard's top-10 anomaly list, so an 11th live event was treated as recovered and closed. `/api/device` read the shared event deque outside the engine lock. | Persistence/alarm sync use `snapshot(full_anomalies=True)`; `device_detail` copies the device's alerts under the engine lock. |
+
+### Tests
+
+`tests/test_backend_fixes.py` adds **20** offline regressions (isolated temp
+databases; no live server, no production data):
+
+- reset keeps the same lock and bumps `reset_seq`; a post-reset catch-up
+  sample starts a new anomaly epoch with a distinct event key;
+- sensor drift/stuck on aggregate devices distorts the aggregate reading;
+- sensor health penalises injected sensor faults but still honours dataset
+  `sensor_flags`;
+- POST size, malformed/ non-object JSON, and control/fault validation return
+  400 without changing engine state; valid controls still apply;
+- a healthy device diagnoses with no anomaly, a real active anomaly is passed
+  to the diagnosis engine;
+- GET intelligence/alarms do not write; a fault POST syncs alarms;
+- live series in Unix seconds integrate to the correct kWh and 24 h baseline;
+- `device_detail` carries locked alerts; full snapshots keep >10 alarms.
+
+Full suite: **141 Python tests** (`python -m unittest discover -s tests -q`);
+the suite passed on repeated runs, and `python -m compileall` covered all
+packages. One pre-existing test,
+`tests/test_panels.py::test_fault_isolation_single_panel`, is
+weather/noise-sensitive: it occasionally sees a second water-heater anomaly
+(or no P-01 anomaly) and can fail a run. The same behaviour was reproduced
+on the unmodified `813eeeb` tree (5/200 simulated runs), so it is not caused
+by this phase; it remains unmodified.
+
+### Deliberately not changed
+
+- `GET /api/device/<id>` returns 404 for registry-only live/imported
+  equipment. The Fleet UI uses `/api/equipment`; `/api/device` is the twin
+  inspector, and inventing engine data for an external device would be worse.
+- `intelligence_snapshots.ts` is declared `REAL` while `IntelligenceStore`
+  inserts a TEXT timestamp. The table is append-only, no code reads the
+  column, and changing an applied migration is riskier than the mismatch.
+- The running server on 8019 still executes the pre-fix code. **These fixes
+  are not live there**; applying them requires a deliberate server restart,
+  which was outside this task's authorization. No live simulation was
+  resumed, paused, reset, or fault-injected, and no alarm was acknowledged
+  or resolved.
+
 ## Running and debugging in VS Code
 
 The reported **F5 → `localhost:8080`** behaviour comes from the *parent

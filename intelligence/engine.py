@@ -30,7 +30,10 @@ class EnergyIntelligence:
         return result
 
     def report(self, snapshot):
-        result = self.analyze(snapshot, persist=True)
+        # The report is served by a GET; generating it must not write a
+        # snapshot row. Explicit persistence stays available via
+        # ``analyze(..., persist=True)`` for callers that want it.
+        result = self.analyze(snapshot, persist=False)
         return daily_report(snapshot, result, result["prioritized_events"], result["recommendations"])
 
     def scenario(self, snapshot, device_id=None, reduction_pct=100, hours=8):

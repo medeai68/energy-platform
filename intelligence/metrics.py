@@ -84,7 +84,11 @@ def grid_dependence(snapshot):
 def sensor_health_score(devices):
     """Separate sensor confidence from equipment health.
 
-    The PR's dataset adapter puts sensor flags in extra.sensor_flags.
+    Two sources are counted: dataset sensor flags in ``extra.sensor_flags``
+    and the live fault catalog's sensor-layer faults (``faults`` entries with
+    ``layer == "sensor"``). Without the latter, injecting ``sensor_drift`` or
+    ``sensor_stuck`` in the digital twin left the sensor score at 100 while
+    only equipment health moved.
     """
     penalties = {
         "sensor_dropout": 35,
@@ -93,13 +97,24 @@ def sensor_health_score(devices):
         "voltage_drift": 15,
         "sensor_noise": 10,
         "grid_voltage_anomaly": 8,
+        # Live fault catalog (sim/faults.py), same severity class as their
+        # dataset counterparts.
+        "sensor_drift": 20,
+        "sensor_stuck": 25,
     }
     scores = []
     for d in devices:
-        score = 100.0
+        deductions = 0.0
         for flag in (d.get("extra") or {}).get("sensor_flags") or []:
-            score -= penalties.get(flag, 0)
-        scores.append(clamp(score))
+            deductions += penalties.get(flag, 0)
+        for fault in d.get("faults") or []:
+            if fault.get("layer") == "sensor":
+                deductions += penalties.get(fault.get("id"), 20)
+        if deductions:
+            # Average only over the devices with sensor evidence. Averaging
+            # one faulty sensor across the whole ~100-device registry would
+            # round the penalty away and hide the fault.
+            scores.append(clamp(100.0 - deductions))
     return round(sum(scores) / len(scores), 1) if scores else 100.0
 
 
@@ -117,12 +132,15 @@ def calculate(snapshot, electricity_rate=DEFAULT_ELECTRICITY_RATE,
     projected_daily_waste_kwh = round(waste_kw * 24.0, 2)
     projected_daily_loss_kwh = round(production_loss_kw * 24.0, 2)
 
+    # Sensor health must see every measured object: a sensor fault injected
+    # on a room circuit or PV module is just as real as one on a plant meter.
+    panels = snapshot.get("panels", [])
     health = {
         "efficiency": energy_efficiency_score(devices),
         "equipment": equipment_health_score(devices + equipment),
         "renewable": renewable_utilization(snapshot),
         "grid": grid_dependence(snapshot),
-        "sensors": sensor_health_score(devices),
+        "sensors": sensor_health_score(devices + panels + equipment),
     }
 
     # Sensor health is deliberately included but cannot dominate equipment health.

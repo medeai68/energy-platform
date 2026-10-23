@@ -14,8 +14,10 @@ circuit, fan-coil, elevator, ... - is described by the same fields:
 
 and, per measurement (one canonical row per equipment and timestamp):
 
-    measured_at         sim absolute minutes (canonical measurement time)
-    measured_day/time   human-readable sim timestamp
+    measured_at         canonical measurement time: sim absolute minutes for
+                        simulated equipment, wall-clock Unix seconds for
+                        live/imported feeds
+    measured_day/time   human-readable timestamp for the same clock
     actual_kw           measured power
     expected_kw         healthy-model expectation
     energy_today_kwh    energy accumulated since sim midnight

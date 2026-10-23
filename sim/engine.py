@@ -137,7 +137,9 @@ class Device:
                 self._stuck_value = self.actual
             self.actual = self._stuck_value
         elif "sensor_drift" in self.faults:
-            self.actual = max(0.0, self.actual * 1.35)
+            # No clamp here: the battery's actual is a signed charge/discharge
+            # flow, so a +35% meter bias must preserve its direction.
+            self.actual = self.actual * 1.35
 
     # --- metering ---
 
@@ -878,6 +880,20 @@ class SimulationEngine:
 
     def __init__(self):
         self.lock = threading.RLock()
+        # Monotonic reset counter. Persistence uses it to start a new anomaly
+        # epoch even when a reset is followed by a fast catch-up in sim time
+        # (a backwards timestamp alone cannot detect every reset).
+        self._reset_seq = 0
+        self._build_state()
+
+    def _build_state(self):
+        """Build the mutable simulation state.
+
+        Called by ``__init__`` and by ``reset()``. It deliberately does not
+        touch ``self.lock`` or ``self._reset_seq``: reset must keep the same
+        lock object, otherwise a thread that is waiting on the old lock could
+        enter the new one while the reset is still mutating state.
+        """
         self.day = 1
         self.minutes = int(SUNRISE * 60)  # start at 06:00
         self.speed = 60  # sim-minutes per real second
@@ -1085,6 +1101,13 @@ class SimulationEngine:
             systems.actual = sum(d.actual for d in self.equipment if d.kind in SYSTEM_KINDS)
             systems.history.append((env["abs_minutes"], systems.expected, systems.actual))
 
+            # Sensor-layer faults applied to an aggregate distort that
+            # aggregate's own reported measurement after its honest sum has
+            # been formed. (Leaves were handled above; the battery is a signed
+            # flow and is handled after its step below.)
+            for dev in self.devices[:6]:
+                dev.apply_sensor_faults()
+
             total_load = hvac.actual + lighting.actual + plugs.actual + systems.actual
             grid_net = total_load - inverter.actual
             dt_h = self.speed / 60.0
@@ -1095,6 +1118,7 @@ class SimulationEngine:
             battery = self.devices[6] if len(self.devices) > 6 else None
             if battery is not None:
                 battery.step(env, inverter.actual - total_load, dt_h)
+                battery.apply_sensor_faults()
                 storage_kw = battery.actual
                 self.today["storage_charge_kwh"] += max(0.0, storage_kw) * dt_h
                 self.today["storage_discharge_kwh"] += max(0.0, -storage_kw) * dt_h
@@ -1151,9 +1175,16 @@ class SimulationEngine:
             return True
 
     def reset(self):
-        """Full reset: back to day 1 06:00, no faults, no events."""
+        """Full reset: back to day 1 06:00, no faults, no events.
+
+        Rebuilds the state under the existing lock instead of re-running
+        ``__init__``: replacing the lock object mid-reset would let another
+        thread acquire the new lock while this one is still re-initialising,
+        exposing a partially reset engine.
+        """
         with self.lock:
-            self.__init__()
+            self._reset_seq += 1
+            self._build_state()
 
     def _add_event(self, severity, device_id, device_name, message, active=True):
         self._event_seq += 1
@@ -1213,7 +1244,14 @@ class SimulationEngine:
                     if e["active"] and e["severity"] != "operator"
                     and e["device_id"] in ids])
 
-    def snapshot(self):
+    def snapshot(self, full_anomalies=False):
+        """Serialized state for the API.
+
+        ``snapshot["anomalies"]`` is capped at the 10 highest-priority active
+        events for the dashboard. Persistence and alarm syncs pass
+        ``full_anomalies=True`` so an event outside that window is not
+        mistaken for recovery and closed while it is still live.
+        """
         with self.lock:
             env = {
                 "abs_minutes": self.abs_minutes,
@@ -1313,6 +1351,7 @@ class SimulationEngine:
                     "cloud": round(self.weather.cloud, 2),
                     "temp_out": round(env["temp_out"], 1),
                     "sun": round(self.weather.daylight(self.hour), 2),
+                    "reset_seq": self._reset_seq,
                 },
                 "kpis": {
                     "solar_kw": round(self.devices[1].actual, 1),
@@ -1334,7 +1373,11 @@ class SimulationEngine:
                     "import_kw": round(max(net, 0.0), 1),
                     "export_kw": round(max(-net, 0.0), 1),
                 },
-                "anomalies": [e for e in self.events if e["active"] and e["severity"] != "operator"][:10],
+                "anomalies": ([e for e in self.events
+                               if e["active"] and e["severity"] != "operator"]
+                              if full_anomalies else
+                              [e for e in self.events
+                               if e["active"] and e["severity"] != "operator"][:10]),
                 "events": list(self.events)[:30],
                 "history": list(self.history),
             }
@@ -1402,6 +1445,13 @@ class SimulationEngine:
                     for f in catalog
                 ],
                 "anomaly": active_anomaly,
+                # Copied while the lock is held: iterating the live deque from
+                # an HTTP thread can race with a tick's appendleft.
+                "alerts": [
+                    e for e in self.events
+                    if e.get("device_id") == device_id
+                    and e.get("severity") != "operator"
+                ][:8],
                 "history": [
                     {"t": t, "expected": round(e, 1), "actual": round(a, 1)}
                     for t, e, a in dev.history

@@ -17,7 +17,11 @@ Responsibilities
 
 Cadence is controlled by the caller (server.py): samples are written every
 few real seconds, which is independent of the simulation speed. The
-measurement timestamp is the simulation's absolute minute, not wall time.
+measurement timestamp follows the data source: simulated samples use the
+simulation's absolute minute (day 1 00:00 = 0), while live and imported
+feeds use wall-clock Unix seconds. Both are canonical for their source, so
+the (equipment, measured_at) UPSERT key stays meaningful; energy integration
+must convert the live/imported unit to minutes (see server._energy_block).
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ class EquipmentStore:
         self.lock = threading.Lock()
         self._epoch = 0          # incremented when the simulation is reset
         self._last_abs = None    # last measurement time seen
+        self._reset_seq = None   # engine generation last seen in a snapshot
         # wall-clock time of the last persisted sample per equipment, used by
         # the data-availability visualization (ages are real seconds, not sim)
         self._last_sample_wall = {}
@@ -115,7 +120,7 @@ class EquipmentStore:
         devices = self._all_devices(snapshot)
 
         with self.lock:
-            self._begin_sample(measured_at)
+            self._begin_sample(measured_at, sim.get("reset_seq"))
             rows = []
             for d in devices:
                 rows.append((
@@ -307,13 +312,27 @@ class EquipmentStore:
 
     # ---------------- anomalies ----------------
 
-    def _begin_sample(self, measured_at):
-        """Detect a simulation reset (time moved backwards) and start a new
-        anomaly epoch so new event ids cannot collide with old records."""
-        if self._last_abs is not None and measured_at < self._last_abs:
+    def _begin_sample(self, measured_at, reset_seq=None):
+        """Detect a simulation reset and start a new anomaly epoch.
+
+        The engine's monotonic reset counter is authoritative. A backwards
+        timestamp alone misses a reset that is followed by a fast catch-up:
+        at high simulation speed the sim time can pass the previous sample
+        before the next one is taken, which would let the restarted event
+        ids collide with the old epoch's event keys.
+        """
+        reset_changed = (
+            reset_seq is not None
+            and self._reset_seq is not None
+            and int(reset_seq) != self._reset_seq
+        )
+        if reset_changed or (self._last_abs is not None
+                             and measured_at < self._last_abs):
             self._epoch += 1
             self._close_active_anomalies(measured_at)
         self._last_abs = measured_at
+        if reset_seq is not None:
+            self._reset_seq = int(reset_seq)
 
     def refresh_anomalies(self, snapshot):
         """Sync alarm state from a live snapshot without writing measurements.
@@ -325,7 +344,7 @@ class EquipmentStore:
         sim = snapshot.get("sim") or {}
         measured_at = self._abs_minutes(sim)
         with self.lock:
-            self._begin_sample(measured_at)
+            self._begin_sample(measured_at, sim.get("reset_seq"))
             self._sync_anomalies(snapshot, measured_at)
         return measured_at
 
@@ -576,34 +595,38 @@ class EquipmentStore:
 
     def list_equipment(self):
         """Registry joined with each device's latest canonical measurement."""
-        rows = self.conn.execute(
-            """SELECT e.id, e.name, e.category, e.building_id, e.floor_id,
-                      e.room_id, e.rated_kw, e.source, e.attributes,
-                      m.actual_kw, m.expected_kw, m.energy_today_kwh,
-                      m.operating_hours, m.status, m.measured_at,
-                      m.measured_day, m.measured_time, m.sensors,
-                      m.source AS measurement_source,
-                      (SELECT COUNT(*) FROM equipment_anomalies a
-                        WHERE a.equipment_id = e.id AND a.active = 1) AS active_anomalies
-                 FROM equipment e
-                 LEFT JOIN equipment_measurements m
-                   ON m.equipment_id = e.id
-                  AND m.measured_at = (SELECT MAX(measured_at)
-                                         FROM equipment_measurements
-                                        WHERE equipment_id = e.id)
-                ORDER BY COALESCE(e.building_id, ''),
-                         COALESCE(e.floor_id, ''),
-                         e.category, e.id"""
-        ).fetchall()
+        # The server is threaded: every read shares this connection with the
+        # sampling loop, so it must hold the connection lock too.
+        with self.lock:
+            rows = self.conn.execute(
+                """SELECT e.id, e.name, e.category, e.building_id, e.floor_id,
+                          e.room_id, e.rated_kw, e.source, e.attributes,
+                          m.actual_kw, m.expected_kw, m.energy_today_kwh,
+                          m.operating_hours, m.status, m.measured_at,
+                          m.measured_day, m.measured_time, m.sensors,
+                          m.source AS measurement_source,
+                          (SELECT COUNT(*) FROM equipment_anomalies a
+                            WHERE a.equipment_id = e.id AND a.active = 1) AS active_anomalies
+                     FROM equipment e
+                     LEFT JOIN equipment_measurements m
+                       ON m.equipment_id = e.id
+                      AND m.measured_at = (SELECT MAX(measured_at)
+                                             FROM equipment_measurements
+                                            WHERE equipment_id = e.id)
+                    ORDER BY COALESCE(e.building_id, ''),
+                             COALESCE(e.floor_id, ''),
+                             e.category, e.id"""
+            ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
     def equipment_detail(self, equipment_id, history=100):
-        row = self.conn.execute(
-            """SELECT id, name, category, building_id, floor_id, room_id,
-                      rated_kw, source, attributes
-                 FROM equipment WHERE id = ?""",
-            (equipment_id,),
-        ).fetchone()
+        with self.lock:
+            row = self.conn.execute(
+                """SELECT id, name, category, building_id, floor_id, room_id,
+                          rated_kw, source, attributes
+                     FROM equipment WHERE id = ?""",
+                (equipment_id,),
+            ).fetchone()
         if row is None:
             return None
         item = {
@@ -613,27 +636,29 @@ class EquipmentStore:
             "rated_kw": row[6], "source": row[7],
             "attributes": json.loads(row[8] or "{}"),
         }
-        measurements = self.conn.execute(
-            """SELECT measured_at, measured_day, measured_time, actual_kw,
-                      expected_kw, energy_today_kwh, operating_hours, status,
-                      source, sensors
-                 FROM equipment_measurements
-                WHERE equipment_id = ?
-                ORDER BY measured_at DESC LIMIT ?""",
-            (equipment_id, int(history)),
-        ).fetchall()
+        with self.lock:
+            measurements = self.conn.execute(
+                """SELECT measured_at, measured_day, measured_time, actual_kw,
+                          expected_kw, energy_today_kwh, operating_hours, status,
+                          source, sensors
+                     FROM equipment_measurements
+                    WHERE equipment_id = ?
+                    ORDER BY measured_at DESC LIMIT ?""",
+                (equipment_id, int(history)),
+            ).fetchall()
         # the query is ordered newest first, so measurements[0] is current
         item["latest"] = self._measurement(measurements[0]) if measurements else None
         item["history"] = [self._measurement(m) for m in reversed(measurements)]
-        anomalies = self.conn.execute(
-            """SELECT event_key, opened_at, closed_at, severity, message, active,
-                      acknowledged_at, acknowledged_by, resolved_at,
-                      resolved_by, resolution_note
-                 FROM equipment_anomalies
-                WHERE equipment_id = ?
-                ORDER BY opened_at DESC LIMIT 50""",
-            (equipment_id,),
-        ).fetchall()
+        with self.lock:
+            anomalies = self.conn.execute(
+                """SELECT event_key, opened_at, closed_at, severity, message, active,
+                          acknowledged_at, acknowledged_by, resolved_at,
+                          resolved_by, resolution_note
+                     FROM equipment_anomalies
+                    WHERE equipment_id = ?
+                    ORDER BY opened_at DESC LIMIT 50""",
+                (equipment_id,),
+            ).fetchall()
         item["anomalies"] = [
             {"event_key": a[0], "opened_at": a[1], "closed_at": a[2],
              "severity": a[3], "message": a[4], "active": bool(a[5]),
@@ -687,6 +712,10 @@ class EquipmentStore:
             stats["schema_version"] = self.schema_version
             stats["db_path"] = str(self.path)
         return stats
+
+    # All reads that share ``self.conn`` hold ``self.lock``: the HTTP server
+    # handles requests on multiple threads while the sampling loop writes, and
+    # a sqlite3 connection is not safe for concurrent use without it.
 
     def close(self):
         with self.lock:

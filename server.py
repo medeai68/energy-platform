@@ -36,6 +36,10 @@ equipment_store = EquipmentStore(DB_PATH)
 # timestamp is sim time; the cadence is wall-clock so it is independent of
 # the simulation speed). UPSERT keys make paused simulations idempotent.
 EQUIPMENT_SAMPLE_SECONDS = 10
+#: Request bodies are small JSON documents; refuse anything larger before
+#: reading it so a local client cannot make the server allocate unbounded RAM.
+MAX_BODY_BYTES = 64 * 1024
+WEATHER_MODES = ("auto", "clear", "partly", "cloudy", "overcast")
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -55,7 +59,9 @@ def run_equipment_loop():
     first = True
     while True:
         try:
-            snap = engine.snapshot()
+            # Full anomaly list: the store must not close an active alarm
+            # merely because it fell outside the dashboard's top-10 window.
+            snap = engine.snapshot(full_anomalies=True)
             if first:
                 equipment_store.sync_registry(snap)
                 first = False
@@ -135,13 +141,32 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, payload)
 
     def _read_body(self):
-        length = int(self.headers.get("Content-Length") or 0)
+        """Read one JSON object body, or raise ValueError for a bad request.
+
+        ``Content-Length`` is validated before any bytes are read: a malformed
+        length or an oversized body must not reach ``rfile.read``. Oversized
+        requests also close the connection, since their body is deliberately
+        left unread.
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("invalid Content-Length header") from None
+        if length < 0:
+            raise ValueError("invalid Content-Length header")
+        if length > MAX_BODY_BYTES:
+            self.close_connection = True
+            raise ValueError(
+                f"request body too large (maximum {MAX_BODY_BYTES} bytes)")
         if length == 0:
             return {}
         try:
-            return json.loads(self.rfile.read(length).decode("utf-8"))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
+        if not isinstance(body, dict):
+            raise ValueError("JSON body must be an object")
+        return body
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -152,8 +177,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/state":
             self._json(200, current_snapshot())
         elif path == "/api/intelligence":
+            # GET is read-only: the dashboard polls this route, and persisting
+            # every poll filled intelligence_snapshots with duplicate rows.
             snap = engine.snapshot()
-            self._json(200, intelligence.analyze(snap, persist=True))
+            self._json(200, intelligence.analyze(snap, persist=False))
         elif path == "/api/intelligence/report":
             snap = engine.snapshot()
             self._json(200, intelligence.report(snap))
@@ -200,10 +227,11 @@ class Handler(BaseHTTPRequestHandler):
     def _alarms(self, query):
         """Alarm center feed: persisted anomalies + operator follow-up.
 
-        The snapshot is synced first so alarm state never lags a fault the
-        user just injected; the detector still owns whether a condition is
-        active - the UI cannot make a live alarm disappear."""
-        equipment_store.refresh_anomalies(engine.snapshot())
+        This is a read-only GET. The detector owns whether a condition is
+        active; state is persisted by the 10-second sampling loop and
+        immediately after a fault mutation (``POST /api/fault``), so polling
+        the alarm feed cannot rewrite alarm records.
+        """
         status = (query.get("status") or ["active"])[0]
         severity = (query.get("severity") or [""])[0]
         building = (query.get("building") or [""])[0]
@@ -233,7 +261,8 @@ class Handler(BaseHTTPRequestHandler):
     def _alarm_action(self, body, action):
         equipment_id = body.get("equipment_id")
         event_key = body.get("event_key")
-        if not equipment_id or not event_key:
+        if (not isinstance(equipment_id, str) or not equipment_id
+                or not isinstance(event_key, str) or not event_key):
             self._json(400, {"error": "equipment_id and event_key are required"})
             return
         try:
@@ -266,10 +295,6 @@ class Handler(BaseHTTPRequestHandler):
             "age_seconds": round(max(0.0, time.time() - engine.last_tick_wall), 1),
             "paused": engine.paused,
         }
-        detail["alerts"] = [
-            e for e in list(engine.events)
-            if e.get("device_id") == dev_id and e.get("severity") != "operator"
-        ][:8]
         # Persisted equipment model (may be None until the first sample).
         detail["persisted"] = equipment_store.equipment_detail(dev_id, history=240)
         detail["energy"] = Handler._energy_block(detail)
@@ -304,10 +329,17 @@ class Handler(BaseHTTPRequestHandler):
             simulated_kwh = detail.get("energy_today_kwh")
         else:
             # Live/imported readings: use the canonical persisted series.
+            # Those feeds timestamp samples in wall-clock Unix *seconds*,
+            # while ``calculate_energy`` works in minutes. Convert before
+            # integrating: without this, a 15-second sample interval was
+            # treated as 15 minutes and the "last 24 h" baseline was really
+            # the last 24 minutes.
             hist = persisted.get("history") or []
-            series = [(h.get("measured_at"), h.get("actual_kw")) for h in hist]
-            max_gap = max(30.0,
-                          float(engine.speed) * EQUIPMENT_SAMPLE_SECONDS * 3.0)
+            series = [
+                (float(h["measured_at"]) / 60.0, h.get("actual_kw"))
+                for h in hist if h.get("measured_at") is not None
+            ]
+            max_gap = max(1.0, (EQUIPMENT_SAMPLE_SECONDS * 3.0) / 60.0)
             latest = hist[-1] if hist else None
             measured_kw = latest.get("actual_kw") if latest else None
             measured_at = ({"abs_minutes": latest["measured_at"],
@@ -436,14 +468,35 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        body = self._read_body()
+        try:
+            body = self._read_body()
+        except ValueError as exc:
+            self._json(400, {"error": str(exc)})
+            return
         if body is None:
             self._json(400, {"error": "invalid JSON body"})
             return
 
         if path == "/api/fault":
-            ok = engine.set_fault(body.get("device_id"), body.get("fault_id"),
-                                  bool(body.get("active")))
+            device_id = body.get("device_id")
+            fault_id = body.get("fault_id")
+            active = body.get("active")
+            if (not isinstance(device_id, str) or not device_id
+                    or not isinstance(fault_id, str) or not fault_id):
+                self._json(400, {"error": "device_id and fault_id are required"})
+                return
+            if not isinstance(active, bool):
+                self._json(400, {"error": "active must be true or false"})
+                return
+            ok = engine.set_fault(device_id, fault_id, active)
+            if ok:
+                # A mutation may change detector state immediately; sync the
+                # persisted alarms here (GET /api/alarms stays read-only).
+                try:
+                    equipment_store.refresh_anomalies(
+                        engine.snapshot(full_anomalies=True))
+                except Exception as exc:  # never fail the mutation on sync
+                    print(f"[alarms] sync error: {exc}")
             self._json(200 if ok else 400, {"ok": ok})
 
         elif path == "/api/alarms/acknowledge":
@@ -453,32 +506,23 @@ class Handler(BaseHTTPRequestHandler):
             self._alarm_action(body, "resolve")
 
         elif path == "/api/control":
-            action = body.get("action")
-            value = body.get("value")
-            if action == "speed":
-                engine.set_speed(value)
-            elif action == "pause":
-                engine.set_paused(bool(value))
-            elif action == "weather":
-                engine.set_weather(value)
-            elif action == "reset":
-                engine.reset()
-            else:
-                self._json(400, {"error": f"unknown action '{action}'"})
-                return
-            self._json(200, {"ok": True})
+            self._control(body)
 
         elif path == "/api/ai/diagnose":
             self._diagnose(body)
 
         elif path == "/api/intelligence/scenario":
             snap = engine.snapshot()
-            result = intelligence.scenario(
-                snap,
-                device_id=body.get("device_id"),
-                reduction_pct=body.get("reduction_pct", 100),
-                hours=body.get("hours", 8),
-            )
+            try:
+                result = intelligence.scenario(
+                    snap,
+                    device_id=body.get("device_id"),
+                    reduction_pct=body.get("reduction_pct", 100),
+                    hours=body.get("hours", 8),
+                )
+            except (TypeError, ValueError) as exc:
+                self._json(400, {"error": str(exc)})
+                return
             self._json(200, result)
 
         elif path.startswith("/api/equipment/") and path.endswith("/scenario"):
@@ -500,11 +544,47 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(404, {"error": "not found"})
 
+    def _control(self, body):
+        """Apply one simulation control, rejecting malformed values.
+
+        Previously a string/None speed raised inside the engine (a reset
+        connection instead of a 400), ``pause`` used ``bool(value)`` (so the
+        string "false" paused the simulation) and an unknown weather mode was
+        accepted with ``ok: true``.
+        """
+        action = body.get("action")
+        value = body.get("value")
+        if action == "speed":
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                self._json(400, {"error": "speed must be a number"})
+                return
+            if not 1 <= value <= 1440:
+                self._json(400, {"error": "speed must be between 1 and 1440"})
+                return
+            engine.set_speed(value)
+        elif action == "pause":
+            if not isinstance(value, bool):
+                self._json(400, {"error": "pause value must be true or false"})
+                return
+            engine.set_paused(value)
+        elif action == "weather":
+            if value not in WEATHER_MODES:
+                self._json(400, {"error": (
+                    "weather must be one of: " + ", ".join(WEATHER_MODES))})
+                return
+            engine.set_weather(value)
+        elif action == "reset":
+            engine.reset()
+        else:
+            self._json(400, {"error": f"unknown action '{action}'"})
+            return
+        self._json(200, {"ok": True})
+
     def _scenario(self, body, path):
         """Save / clear a simulated-scenario configuration for one equipment."""
         eq_id = path[len("/api/equipment/"):-len("/scenario")]
         try:
-            if body.get("clear"):
+            if body.get("clear") is True:
                 cleared = equipment_store.clear_scenario(eq_id)
                 self._json(200, {"ok": True, "cleared": cleared,
                                  "scenario": None})
@@ -530,23 +610,25 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": f"unknown device '{dev_id}'"})
             return
 
-        event = next((e for e in snap["anomalies"] if e["device_id"] == dev_id), None)
+        # Only a live detector event is an anomaly. The fallback previously
+        # invented a warning ("Current residual outside the expected band")
+        # when nothing was active, so a healthy device was diagnosed as if it
+        # had faulted. The event history is also filtered to active,
+        # non-operator entries - an injected-fault log line is not an anomaly.
+        event = next(
+            (e for e in snap["anomalies"] if e.get("device_id") == dev_id),
+            None,
+        )
         if event is None:
-            event = next((e for e in snap["events"] if e["device_id"] == dev_id), None)
-        if event is None:
-            rel = device.get("rel")
-            event = {
-                "severity": "warning",
-                "message": "Current residual outside the expected band",
-                "device_id": dev_id,
-                "device_name": device["name"],
-                "day": snap["sim"]["day"],
-                "time": snap["sim"]["time"],
-            }
-        else:
-            rel = device.get("rel")
+            event = next(
+                (e for e in snap.get("events", [])
+                 if e.get("device_id") == dev_id and e.get("active")
+                 and e.get("severity") != "operator"),
+                None,
+            )
+        rel = device.get("rel")
 
-        diagnosis = diagnose(device, event, rel)
+        diagnosis = diagnose(device, event or {}, rel)
         self._json(200, {
             "device": device,
             "anomaly": event,
