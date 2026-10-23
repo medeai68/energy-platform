@@ -3,17 +3,17 @@
 .ei-actions { display:flex; gap:8px; }
 .ei-grid { display:grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap:12px; }
 .ei-score, .ei-metric { border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--surface-2); }
-.ei-score-label { font-size:12px; text-transform:uppercase; letter-spacing:.08em; opacity:.7; }
-.ei-score-value { font-size:30px; font-weight:800; margin-top:4px; }
+.ei-score-label { font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7; font-weight:600; }
+.ei-score-value { font-size:28px; font-weight:800; margin-top:5px; font-variant-numeric:tabular-nums; }
 .ei-good { color:var(--good); } .ei-warn { color:var(--warning); } .ei-critical { color:var(--critical); }
 .ei-score-status { font-size:12px; opacity:.7; }
-.ei-metric b { display:block; font-size:21px; }
-.ei-metric span { font-size:12px; opacity:.7; }
+.ei-metric b { display:block; font-size:21px; font-weight:700; font-variant-numeric:tabular-nums; }
+.ei-metric span { font-size:11px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; }
 .ei-components { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:12px; }
 .ei-bar { font-size:12px; }
 .ei-bar b { float:right; }
 .ei-bar i { display:block; height:6px; margin-top:5px; background:var(--border); border-radius:99px; overflow:hidden; }
-.ei-bar em { display:block; height:100%; background:var(--series-1); }
+.ei-bar em { display:block; height:100%; background:var(--series-3); }
 .ei-columns { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; }
 .ei-columns h3 { margin:0 0 8px; }
 .ei-item { padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
@@ -25,4 +25,54 @@
   .ei-score { grid-column:1/-1; }
   .ei-components { grid-template-columns:1fr 1fr; }
   .ei-columns { grid-template-columns:1fr; }
+}
+
+/* AI Energy Report dialog (replaces the native alert) */
+.ei-report-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(5, 7, 10, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.ei-report-card {
+  width: min(560px, 96vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 20px 22px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  color: var(--text-primary);
+}
+.ei-report-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ei-report-head h2 { margin: 2px 0 0; font-size: 18px; }
+.ei-report-kicker {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--series-3);
+}
+.ei-report-status { margin: 14px 0 4px; font-weight: 600; }
+.ei-report-summary { margin: 0 0 14px; color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+.ei-report-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+.ei-report-grid dt { color: var(--text-muted); }
+.ei-report-grid dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ei-report-note { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+@media (max-width: 480px) {
+  .ei-report-grid { grid-template-columns: 1fr; gap: 2px; }
+  .ei-report-grid dd { margin-bottom: 6px; }
 }

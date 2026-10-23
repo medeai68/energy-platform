@@ -106,6 +106,9 @@ def sensor_health_score(devices):
 def calculate(snapshot, electricity_rate=DEFAULT_ELECTRICITY_RATE,
               grid_co2_kg_per_kwh=DEFAULT_GRID_CO2_KG_PER_KWH):
     devices = snapshot.get("devices", [])
+    # Waste is measured on the aggregate devices (each is the exact sum of
+    # its leaves), while equipment health also watches every leaf device.
+    equipment = snapshot.get("equipment", [])
     waste_kw = sum(device_waste_kw(d) for d in devices)
     production_loss_kw = sum(device_production_loss_kw(d) for d in devices)
 
@@ -116,7 +119,7 @@ def calculate(snapshot, electricity_rate=DEFAULT_ELECTRICITY_RATE,
 
     health = {
         "efficiency": energy_efficiency_score(devices),
-        "equipment": equipment_health_score(devices),
+        "equipment": equipment_health_score(devices + equipment),
         "renewable": renewable_utilization(snapshot),
         "grid": grid_dependence(snapshot),
         "sensors": sensor_health_score(devices),

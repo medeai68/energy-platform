@@ -15,7 +15,10 @@ function eiScoreClass(score) {
 
 function ensurePanel() {
   if (ei$("energy-intelligence")) return;
-  const main = document.querySelector("main.layout");
+  // Phase 2: the legacy below-fold region is a section inside the application
+  // main, not a nested <main> landmark.
+  const main = document.getElementById("below-fold")
+    || document.querySelector(".layout.below-fold");
   if (!main) return;
   const section = document.createElement("section");
   section.id = "energy-intelligence";
@@ -47,7 +50,7 @@ function ensurePanel() {
       <div><h3>Recommended actions</h3><div id="ei-recommendations"></div></div>
     </div>
   `;
-  main.insertBefore(section, main.firstElementChild);
+  main.append(section);
   ei$("ei-report").addEventListener("click", showReport);
 }
 
@@ -126,36 +129,135 @@ function renderIntelligence(data) {
   }
 }
 
-async function pollIntelligence() {
-  try {
-    const r = await fetch("/api/intelligence");
-    if (r.ok) renderIntelligence(await r.json());
-  } catch (_) {}
+/* This panel is refreshed by app.js's pollIntelligence() from the shared
+   /api/intelligence payload.  It intentionally runs no timer of its own:
+   the previous second poll loop doubled every intelligence request. */
+
+/* ---------------- AI Energy Report dialog ---------------- */
+
+/* Accessible in-page dialog (replaces the blocking native alert()): the
+   report is presentation material, so it must be themed, readable on a
+   projector and on a phone, announced to assistive technology, and it must
+   not block the page. Content is inserted with textContent only. */
+let EI_REPORT = { dialog: null, close: null, title: null, status: null,
+                  summary: null, grid: null, opener: null };
+
+function ensureReportDialog() {
+  if (EI_REPORT.dialog) return EI_REPORT;
+  const backdrop = document.createElement("div");
+  backdrop.className = "ei-report-backdrop hidden";
+  backdrop.id = "ei-report-dialog";
+  backdrop.innerHTML = `
+    <div class="ei-report-card" role="dialog" aria-modal="true"
+         aria-labelledby="ei-report-title" aria-describedby="ei-report-summary">
+      <div class="ei-report-head">
+        <div>
+          <span class="ei-report-kicker">Simulated · Energy Intelligence</span>
+          <h2 id="ei-report-title">AI Energy Report</h2>
+        </div>
+        <button type="button" class="btn" id="ei-report-close"
+                title="Close the report" aria-label="Close the report">&times;</button>
+      </div>
+      <p class="ei-report-status" id="ei-report-status">Generating…</p>
+      <p class="ei-report-summary" id="ei-report-summary"></p>
+      <dl class="ei-report-grid" id="ei-report-grid"></dl>
+      <p class="ei-report-note">Calculated from simulated sensor history with the
+        documented formulas — not metered. No physical devices are connected.</p>
+    </div>`;
+  document.body.append(backdrop);
+  const close = backdrop.querySelector("#ei-report-close");
+  close.addEventListener("click", () => closeReport());
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeReport(); });
+  backdrop.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeReport();
+    } else if (e.key === "Tab") {
+      // single focusable control: keep focus inside the dialog
+      e.preventDefault();
+      close.focus();
+    } else {
+      // keep page-level shortcuts (A, E, 1-6, /, …) from firing behind the
+      // aria-modal report
+      e.stopPropagation();
+    }
+  });
+  EI_REPORT = {
+    dialog: backdrop, close,
+    title: backdrop.querySelector("#ei-report-title"),
+    status: backdrop.querySelector("#ei-report-status"),
+    summary: backdrop.querySelector("#ei-report-summary"),
+    grid: backdrop.querySelector("#ei-report-grid"),
+    opener: null,
+  };
+  return EI_REPORT;
+}
+
+function openReportDialog(opener) {
+  const d = ensureReportDialog();
+  // a programmatic .click() does not move focus, so the trigger button is
+  // passed explicitly; fall back to whatever held focus.
+  d.opener = opener || document.activeElement;
+  d.dialog.classList.remove("hidden");
+  d.close.focus();
+}
+
+function closeReport() {
+  const d = EI_REPORT;
+  if (!d || !d.dialog) return;
+  d.dialog.classList.add("hidden");
+  if (d.opener && typeof d.opener.focus === "function" && document.contains(d.opener)) {
+    try { d.opener.focus({ preventScroll: true }); } catch (_) { /* detached */ }
+  }
+  d.opener = null;
+}
+
+function eiReportRow(label, value) {
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+  const dd = document.createElement("dd");
+  dd.textContent = value;
+  return [dt, dd];
 }
 
 async function showReport() {
   ensurePanel();
   const btn = ei$("ei-report");
+  const d = ensureReportDialog();
+  openReportDialog(btn);
+  d.title.textContent = "AI Energy Report";
+  d.status.textContent = "Generating…";
+  d.summary.textContent = "";
+  d.grid.textContent = "";
   btn.disabled = true;
   btn.textContent = "Generating…";
   try {
-    const r = await fetch("/api/intelligence/report");
-    const report = await r.json();
-    alert(
-      `${report.status}\n\n${report.summary}\n\n` +
-      `Daily projected waste: ${report.waste.projected_daily_kwh} kWh\n` +
-      `Projected cost: $${report.waste.projected_daily_cost}\n` +
-      `Projected CO₂: ${report.waste.projected_daily_co2_kg} kg\n\n` +
-      `Top issue: ${report.top_issues[0]?.message || "None"}`
-    );
+    const report = await netJSON("/api/intelligence/report", { timeout: 8000 });
+    d.status.textContent = report.status || "Report";
+    d.summary.textContent = report.summary || "";
+    d.grid.textContent = "";
+    const rows = [
+      ["Daily projected waste", `${report.waste.projected_daily_kwh} kWh`],
+      ["Projected cost", `$${report.waste.projected_daily_cost}`],
+      ["Projected CO₂", `${report.waste.projected_daily_co2_kg} kg`],
+      ["Top issue", (report.top_issues && report.top_issues[0] && report.top_issues[0].message) || "None"],
+    ];
+    for (const [label, value] of rows) {
+      const [dt, dd] = eiReportRow(label, String(value));
+      d.grid.append(dt, dd);
+    }
+  } catch (err) {
+    d.title.textContent = "Report unavailable";
+    d.status.textContent = "Could not generate the report.";
+    d.summary.textContent =
+      (err && err.message ? err.message : "The server is unreachable.")
+      + " — the panel keeps working and the report can be retried.";
+    d.grid.textContent = "";
   } finally {
     btn.disabled = false;
     btn.textContent = "AI Energy Report";
   }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  ensurePanel();
-  pollIntelligence();
-  setInterval(pollIntelligence, 5000);
-});
+window.addEventListener("DOMContentLoaded", ensurePanel);

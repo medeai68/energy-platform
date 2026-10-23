@@ -63,6 +63,101 @@ RULE_SETS = {
         {"cause": "Faulty power supply / phantom load", "confidence": 0.55,
          "actions": ["Meter individual circuits", "Replace aging power supplies"]},
     ],
+    ("panel", "lo"): [
+        {"cause": "Cracked cells or hot spot", "confidence": 0.65,
+         "actions": ["Run an IR thermal scan of the panel",
+                     "Compare the panel's IV curve against a neighbouring module"]},
+        {"cause": "Connector (MC4) or cabling fault", "confidence": 0.60,
+         "actions": ["Inspect connectors for corrosion or arcing",
+                     "Measure string current at the panel junction box"]},
+        {"cause": "Localised shading or soiling", "confidence": 0.50,
+         "actions": ["Inspect the panel for obstructions or heavy dust",
+                     "Clean the panel and re-check output after a full sun cycle"]},
+    ],
+    ("fcu", "hi"): [
+        {"cause": "Dirty coil or clogged filter", "confidence": 0.70,
+         "actions": ["Clean the coil and replace filters",
+                     "Check supply-air temperature against setpoint"]},
+        {"cause": "Refrigerant undercharge", "confidence": 0.55,
+         "actions": ["Check refrigerant charge and leak-test the circuit",
+                     "Recharge to manufacturer specification"]},
+        {"cause": "Fan motor bearing wear", "confidence": 0.50,
+         "actions": ["Measure fan motor current against nameplate",
+                     "Lubricate or replace the motor"]},
+    ],
+    ("fcu", "lo"): [
+        {"cause": "Unit tripped offline", "confidence": 0.60,
+         "actions": ["Check breakers and unit error codes",
+                     "Reset and monitor for re-trip"]},
+        {"cause": "Zone damper closed or setpoint change", "confidence": 0.50,
+         "actions": ["Verify zone dampers and thermostat setpoints",
+                     "Compare against the baseline schedule"]},
+    ],
+    ("room_light", "hi"): [
+        {"cause": "Schedule error or stuck relay", "confidence": 0.85,
+         "actions": ["Verify the BMS schedule and overrides for this room",
+                     "Inspect the lighting contactor/relay"]},
+        {"cause": "Occupancy sensor fault", "confidence": 0.55,
+         "actions": ["Test the room's occupancy sensor and wiring",
+                     "Check the sensor time-out setting"]},
+    ],
+    ("room_plugs", "hi"): [
+        {"cause": "Equipment left running after hours", "confidence": 0.70,
+         "actions": ["Audit night-time plug loads in the room",
+                     "Add schedule-based shutdown for workstations"]},
+        {"cause": "Overloaded circuit or extra equipment", "confidence": 0.55,
+         "actions": ["Meter the circuit and compare to nameplate",
+                     "Redistribute loads across circuits"]},
+        {"cause": "Faulty power supply / phantom load", "confidence": 0.50,
+         "actions": ["Meter individual devices", "Replace aging power supplies"]},
+    ],
+    ("elevator", "hi"): [
+        {"cause": "Cab standby heater stuck on", "confidence": 0.70,
+         "actions": ["Check the cab heater thermostat",
+                     "Verify night setback control"]},
+        {"cause": "Braking energy recovery failure", "confidence": 0.55,
+         "actions": ["Inspect the regenerative drive module",
+                     "Review drive error logs"]},
+        {"cause": "Unusual traffic pattern", "confidence": 0.45,
+         "actions": ["Compare usage against the weekly baseline",
+                     "Check for after-hours access events"]},
+    ],
+    ("elevator", "lo"): [
+        {"cause": "Drive offline or maintenance mode", "confidence": 0.60,
+         "actions": ["Check the controller status and error codes",
+                     "Verify the maintenance switch position"]},
+    ],
+    ("server_ups", "hi"): [
+        {"cause": "Battery degradation (trickle charging)", "confidence": 0.75,
+         "actions": ["Run a battery health test",
+                     "Plan battery string replacement"]},
+        {"cause": "Cooling fan failure", "confidence": 0.55,
+         "actions": ["Check rack airflow and fan status",
+                     "Verify room temperature against design"]},
+    ],
+    ("ev_charger", "hi"): [
+        {"cause": "Unscheduled charging session", "confidence": 0.70,
+         "actions": ["Check the session log against the schedule",
+                     "Enable schedule enforcement on the charger"]},
+        {"cause": "Meter / CT drift", "confidence": 0.50,
+         "actions": ["Cross-check charger CT readings against the utility meter"]},
+    ],
+    ("ev_charger", "lo"): [
+        {"cause": "Charger derated by protection logic", "confidence": 0.60,
+         "actions": ["Check the charger cooling and connector temperature",
+                     "Review the derating event log"]},
+        {"cause": "Vehicle charging limit", "confidence": 0.45,
+         "actions": ["Compare against the vehicle's charge curve",
+                     "Test with a second vehicle"]},
+    ],
+    ("water_heater", "hi"): [
+        {"cause": "Hot water leak", "confidence": 0.70,
+         "actions": ["Inspect piping and fittings for leaks",
+                     "Watch the heater's reheat cycle frequency"]},
+        {"cause": "Stuck thermostat / heating element", "confidence": 0.60,
+         "actions": ["Test the thermostat contacts",
+                     "Replace the element if it stays energised"]},
+    ],
 }
 
 DEFAULT_CAUSES = [{
@@ -72,7 +167,22 @@ DEFAULT_CAUSES = [{
                 "Compare against the expected model to rule out model error"],
 }]
 
-NOUN = {"solar": "generation", "inverter": "output"}
+RULE_SETS[("battery_storage", "lo")] = [
+    {"cause": "Reduced usable capacity (aged cells)", "confidence": 0.65,
+     "actions": ["Run a capacity test and compare against nameplate",
+                 "Plan cell replacement if capacity stays under 80%"]},
+    {"cause": "Charging fault / BMS refusal", "confidence": 0.55,
+     "actions": ["Check the charge controller and BMS error codes",
+                 "Verify DC wiring and the battery breaker"]},
+]
+RULE_SETS[("battery_storage", "hi")] = [
+    {"cause": "Metering error or unexpected charge window", "confidence": 0.50,
+     "actions": ["Verify the storage meter against the BMS reading",
+                 "Review the charge schedule and grid signals"]},
+]
+
+NOUN = {"solar": "generation", "inverter": "output", "panel": "generation",
+        "battery_storage": "charge/discharge flow"}
 
 SENSOR_PRIORITY = [
     "sensor_dropout", "stuck_sensor", "voltage_bias", "voltage_drift",
@@ -81,6 +191,16 @@ SENSOR_PRIORITY = [
 ]
 
 SENSOR_RULES = {
+    "sensor_drift": [{
+        "cause": "Sensor drift / calibration offset (measurement only — the equipment may be healthy)", "confidence": 0.85,
+        "actions": ["Cross-check the reading against an independent reference meter",
+                    "Re-calibrate or replace the power transducer",
+                    "Verify signal wiring and the DAQ channel"]}],
+    "sensor_stuck": [{
+        "cause": "Stuck sensor (the reading froze — the equipment may be healthy)", "confidence": 0.85,
+        "actions": ["Power-cycle the sensor / DAQ channel",
+                    "Verify the response to a known load change",
+                    "Replace the sensor if it remains fixed"]}],
     "voltage_bias": [{
         "cause": "Voltage sensor bias / calibration offset", "confidence": 0.85,
         "actions": ["Cross-check against a calibrated reference meter",
@@ -128,7 +248,13 @@ def _direction(rel):
 
 def _detected_faults(device):
     flags = (device.get("extra") or {}).get("sensor_flags") or []
-    return [f for f in SENSOR_PRIORITY if f in flags]
+    detected = [f for f in SENSOR_PRIORITY if f in flags]
+    # Sensor-layer faults from the live fault catalog (injected through the
+    # UI) are reported the same way as dataset sensor flags.
+    for f in (device.get("faults") or []):
+        if f.get("layer") == "sensor" and f.get("id") not in detected:
+            detected.append(f["id"])
+    return detected
 
 
 def _safe_power(v):
@@ -169,7 +295,7 @@ def _sensor_diagnosis(device, event, faults):
         "primary_fault": primary,
         "basis": [
             f"Sensor flag(s): {', '.join(faults)}",
-            "Source: dataset/sensor_faults.py",
+            "Source: sensor fault layer (dataset flags or simulated sensor faults)",
         ],
     }
 

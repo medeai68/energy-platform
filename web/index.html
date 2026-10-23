@@ -6,19 +6,179 @@
 <title>Energy AI Platform — Digital Twin &amp; Energy Intelligence</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="energy-intelligence.css">
+<link rel="stylesheet" href="shell.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">
-    <span class="brand-mark">⚡</span>
-    <span class="brand-name">Energy AI Platform</span>
-    <span class="brand-tag">Digital Twin · Virtual Sensors · AI Diagnostics · Energy Intelligence</span>
+
+<a class="skip-link" href="#twin">Skip to the digital twin</a>
+<div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>
+
+<!-- Phase 2 application shell. The legacy rail/stage/below-fold sections are
+     moved into these hosts by shell.js; their IDs and handlers are unchanged. -->
+<div class="app-shell" id="app-shell">
+  <aside class="app-sidebar-slot" id="app-sidebar-slot" aria-label="Primary navigation"></aside>
+  <div class="app-frame">
+    <header class="app-topbar" id="app-topbar">
+      <button type="button" class="shell-menu-btn" id="shell-sidebar-toggle"
+              aria-label="Toggle navigation" aria-expanded="false" aria-controls="app-sidebar-slot">☰</button>
+      <nav class="shell-breadcrumb" id="shell-breadcrumb" aria-label="Breadcrumb"></nav>
+      <div class="app-topbar-right">
+        <span class="shell-status" id="shell-status" role="status" aria-live="polite">
+          <span class="shell-status-dot" aria-hidden="true"></span>
+          <span id="shell-status-text">Connecting…</span>
+        </span>
+      </div>
+    </header>
+    <main class="app-content" id="app-content">
+      <div class="page-container" id="page-container">
+        <header class="page-header" id="shell-page-header">
+          <h1 class="page-title" id="page-title">Overview</h1>
+          <p class="page-subtitle" id="page-subtitle"></p>
+          <div class="page-actions" id="page-actions"></div>
+        </header>
+        <section class="shell-panel shell-compat hidden" id="shell-compat" aria-live="polite"></section>
+        <div id="stage-host" class="stage-host"></div>
+        <div id="belowfold-host" class="belowfold-host"></div>
+      </div>
+    </main>
   </div>
-  <div class="clock" id="clock">
-    Day <b id="clock-day">1</b> · <b id="clock-time">06:00</b>
-    <span class="speed-chip" id="speed-chip">60×</span>
+  <div class="shell-scrim hidden" id="shell-scrim" aria-hidden="true"></div>
+</div>
+
+<div class="stage" id="stage">
+  <!-- WebGL prototype (?render=gl): painted behind the interaction canvas -->
+  <canvas id="twin-gl" aria-hidden="true"></canvas>
+  <canvas id="twin" width="1600" height="950" tabindex="0"
+          aria-label="Perspective digital twin of the rooftop solar installation. Use the arrow keys to move between objects, Enter to open one, Escape to clear the scene focus."
+          aria-describedby="scene-kbd-help"></canvas>
+  <p id="scene-kbd-help" class="sr-only">
+    Scene keyboard controls: arrow keys move through the objects in the current view,
+    Home and End jump to the first and last object, Enter or Space opens the focused
+    object, Escape clears the scene focus. Press question mark for the full shortcut list.
+  </p>
+  <div class="stage-vignette" aria-hidden="true"></div>
+  <div class="stage-grain" aria-hidden="true"></div>
+
+  <!-- transient notification: moved to body level by shell.js so it is
+       independent of the stage and visible on every route -->
+  <div class="conn-banner hidden" id="conn-banner" role="status" aria-live="polite">
+    <div class="conn-banner-body">
+      <span id="conn-banner-text"></span>
+      <button type="button" class="conn-banner-action" id="conn-banner-action"
+              title="Open the alarm center (alarm records stay available while the live connection retries)"
+              aria-label="Open the alarm center">Open alarm center</button>
+    </div>
+    <button type="button" class="conn-banner-close" id="conn-banner-close"
+            title="Dismiss notification" aria-label="Dismiss notification">&times;</button>
   </div>
-  <div class="controls">
+
+  <!-- equipment-list fallback (scene.js / fallback.js swap it in when the
+       canvas is unavailable, or when the user picks List in the HUD) -->
+  <section class="fallback-view hidden" id="fallback-view" aria-label="Equipment list view">
+    <div class="fallback-head">
+      <h2>Equipment list</h2>
+      <p id="fallback-reason">The 3D scene is unavailable.</p>
+    </div>
+    <div class="fallback-list" id="fallback-list"></div>
+  </section>
+
+  <!-- left icon rail -->
+  <nav class="rail" aria-label="Workspace">
+    <a class="rail-logo" href="#" id="rail-logo" title="Energy AI Platform">EFI</a>
+    <div class="rail-icons">
+      <button class="rail-btn" id="rail-home" title="Back to campus view" aria-label="Back to campus">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>
+      </button>
+      <button class="rail-btn" id="rail-buildings" title="Building navigator" aria-label="Building navigator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5l6-2v18"/><path d="M10 8h10v13"/><path d="M13.5 11h3M13.5 15h3"/><rect x="5.5" y="7" width="3" height="3"/><rect x="5.5" y="12" width="3" height="3"/></svg>
+      </button>
+      <button class="rail-btn" id="rail-trend" title="Energy intelligence" aria-label="Energy intelligence">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M6.5 15.5l4-5 3.5 2.5 4.5-6"/></svg>
+      </button>
+      <button class="rail-btn" id="rail-alerts" title="Toggle alerts" aria-label="Toggle alerts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></svg>
+      </button>
+      <button class="rail-btn" id="rail-equipment" title="Plant equipment" aria-label="Plant equipment">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3.5 20 8v8l-8 4.5L4 16V8z"/><path d="m4.4 8.1 7.6 4.3 7.6-4.3"/><path d="M12 12.4V20"/></svg>
+      </button>
+      <button class="rail-btn" id="rail-settings" title="Simulation settings" aria-label="Simulation settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2.1"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="9" cy="17" r="2.1"/></svg>
+      </button>
+    </div>
+    <div class="rail-foot">
+      <span class="rail-avatar" title="Site operator">CW</span>
+      <span class="rail-dots" aria-hidden="true">•••</span>
+    </div>
+  </nav>
+
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="title-block">
+      <div class="crumbs" id="crumbs"><span>Campus</span></div>
+      <h1 id="scene-title">Campus</h1>
+    </div>
+    <div class="top-kpi" id="top-kpi">
+      <span class="top-kpi-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>
+      </span>
+      <div class="top-kpi-text">
+        <div class="top-kpi-val" id="banner-kpi-val">—</div>
+        <div class="top-kpi-label" id="banner-kpi-label">Solar Production</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- live status strip -->
+  <div class="hud-strip" id="hud-strip">
+    <span class="live-dot" aria-hidden="true"></span>
+    <span class="hud-weather" id="overlay-weather">connecting…</span>
+    <span class="hud-sep" aria-hidden="true"></span>
+    <span class="hud-clock">Day <b id="clock-day">1</b> · <b id="clock-time">06:00</b><span class="speed-chip" id="speed-chip">60×</span></span>
+    <span class="hud-actions">
+      <span class="view-toggle" role="group" aria-label="Scene or equipment list">
+        <button id="view-scene" type="button" class="hud-btn view-btn selected"
+                aria-pressed="true" title="Show the 3D scene">3D</button>
+        <button id="view-list" type="button" class="hud-btn view-btn"
+                aria-pressed="false" title="Show the equipment list">List</button>
+      </span>
+      <button id="pause-btn" class="hud-btn" title="Pause / resume simulation"
+              aria-label="Pause simulation">❚❚</button>
+      <button id="reset-btn" class="hud-btn" title="Reset simulation"
+              aria-label="Reset simulation">↺</button>
+      <button id="theme-btn" class="hud-btn" title="Toggle light / dark theme"
+              aria-label="Toggle light / dark theme">◐</button>
+      <button id="kbd-help-btn" type="button" class="hud-btn"
+              title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+    </span>
+  </div>
+
+  <!-- visualization mode selector + legend -->
+  <section class="viz-panel" id="viz-panel" aria-label="Visualization mode">
+    <div class="viz-modes" id="viz-modes" role="group" aria-label="Visualization mode"></div>
+    <div class="viz-playback hidden" id="viz-playback" aria-label="Historical energy playback">
+      <div class="pb-controls">
+        <button type="button" class="pb-btn pb-play" id="pb-play" aria-label="Play history"
+                aria-pressed="false" title="Play / pause simulated history">▶</button>
+        <input type="range" class="pb-slider" id="pb-slider" min="0" max="23" step="1" value="0"
+               aria-label="Playback time of day">
+        <button type="button" class="pb-btn pb-live selected" id="pb-live" aria-pressed="true"
+                title="Show live energy for today">Live</button>
+      </div>
+      <div class="pb-meta">
+        <span class="pb-time" id="pb-time">Live</span>
+        <span class="pb-status" id="pb-status">Simulated history · calculated, not metered</span>
+      </div>
+    </div>
+    <div class="viz-legend" id="viz-legend" aria-live="polite"></div>
+  </section>
+
+  <!-- simulation popover -->
+  <section class="glass-card sim-pop hidden" id="sim-pop" aria-label="Simulation settings">
+    <div class="card-top">
+      <span class="card-kicker">Simulation</span>
+      <button type="button" class="card-x" id="sim-close" title="Close simulation settings"
+              aria-label="Close simulation settings">&times;</button>
+    </div>
     <label class="ctl">Speed
       <select id="speed">
         <option value="1">1× real time</option>
@@ -36,89 +196,404 @@
         <option value="overcast">Overcast</option>
       </select>
     </label>
-    <button id="pause-btn" class="btn">⏸ Pause</button>
-    <button id="reset-btn" class="btn">↺ Reset</button>
-    <button id="theme-btn" class="btn" title="Toggle light / dark">◐</button>
-  </div>
-</header>
-<main class="layout">
-  <section class="card twin-card">
-    <div class="card-head">
-      <h2>Digital Twin</h2>
-      <p class="sub">Commercial building · 50&nbsp;kWp rooftop solar — click a device to inspect &amp; inject faults</p>
-    </div>
-    <div class="twin-wrap" id="twin-wrap">
-      <canvas id="twin" width="980" height="560"></canvas>
-      <div class="twin-overlay">
-        <div class="overlay-panel" id="overlay-legend"></div>
-        <div class="overlay-panel" id="overlay-weather"></div>
-      </div>
-      <div id="twin-tip" class="twin-tip hidden"></div>
-    </div>
+    <label class="ctl">Visual effects
+      <select id="effects" aria-label="Visual effects quality">
+        <option value="full" selected>Full (animated)</option>
+        <option value="reduced">Reduced (static, saves power)</option>
+      </select>
+    </label>
+    <div class="pop-note">Click a solar panel to inspect it, or inject a virtual fault from the equipment list. Keyboard users: Tab to the scene, then arrow keys and Enter.</div>
   </section>
-  <aside class="side">
-    <div class="kpi-row">
-      <div class="kpi" id="kpi-solar">
-        <div class="kpi-label">Solar generation</div>
-        <div class="kpi-value" id="kpi-solar-val">—</div>
-        <div class="kpi-sub" id="kpi-solar-sub">—</div>
-      </div>
-      <div class="kpi" id="kpi-load">
-        <div class="kpi-label">Building load</div>
-        <div class="kpi-value" id="kpi-load-val">—</div>
-        <div class="kpi-sub" id="kpi-load-sub">—</div>
-      </div>
-      <div class="kpi" id="kpi-grid">
-        <div class="kpi-label">Grid exchange</div>
-        <div class="kpi-value" id="kpi-grid-val">—</div>
-        <div class="kpi-sub" id="kpi-grid-sub">—</div>
-      </div>
-      <div class="kpi" id="kpi-suff">
-        <div class="kpi-label">Self-sufficiency</div>
-        <div class="kpi-value" id="kpi-suff-val">—</div>
-        <div class="kpi-sub" id="kpi-suff-sub">—</div>
-      </div>
-    </div>
-    <section class="card">
-      <div class="card-head">
-        <h2>Energy mix today</h2>
-        <button class="table-toggle" data-table="mix">table</button>
-      </div>
-      <div id="mix-chart"></div>
-    </section>
-    <section class="card alerts-card">
-      <div class="card-head">
-        <h2>Alerts</h2>
-        <span class="sub" id="alert-count"></span>
-      </div>
-      <ul id="alerts" class="alerts"></ul>
-    </section>
-  </aside>
-  <section class="card chart-card">
-    <div class="card-head">
-      <h2>Power flow</h2>
-      <p class="sub">kW · solar generation, building load, grid exchange</p>
-      <div class="range-row" id="range-row">
-        <button class="range-btn" data-range="1440">1d</button>
-        <button class="range-btn" data-range="4320">3d</button>
-        <button class="range-btn" data-range="10080">7d</button>
-        <button class="range-btn selected" data-range="0">All</button>
-        <button class="table-toggle" data-table="main">table</button>
-      </div>
-    </div>
-    <div id="main-chart" class="chart"></div>
-  </section>
-</main>
 
-<aside id="device-drawer" class="drawer hidden" aria-label="Device detail">
+  <!-- floating alerts -->
+  <section class="alerts-card" id="alerts-card" aria-label="Alerts">
+    <div class="alerts-head">
+      <span class="alerts-title">Alerts</span>
+      <span class="alerts-count" id="alert-count"></span>
+      <button type="button" class="alerts-manage" id="alert-manage"
+              title="Open the alarm center" aria-label="Open the alarm center">
+        <span>Manage</span>
+        <b class="alerts-manage-badge" id="alert-manage-badge" hidden>0</b>
+      </button>
+      <button type="button" class="card-x alerts-close" id="alerts-close"
+              title="Close alerts" aria-label="Close alerts">&times;</button>
+    </div>
+    <ul id="alerts" class="alerts"></ul>
+  </section>
+
+  <!-- alarm center: simulated alarm lifecycle (acknowledge / resolve) -->
+  <aside class="alarm-center hidden" id="alarm-center" role="dialog"
+         aria-modal="false" aria-labelledby="alarm-center-title">
+    <div class="alarm-head">
+      <div>
+        <span class="alarm-kicker">Simulated alarms</span>
+        <h2 id="alarm-center-title">Alarm center</h2>
+      </div>
+      <button type="button" class="btn" id="alarm-close"
+              title="Close alarm center" aria-label="Close alarm center">&times;</button>
+    </div>
+    <div class="alarm-toolbar">
+      <div class="alarm-filter-row">
+        <div class="alarm-filters" id="alarm-filters" role="group"
+             aria-label="Filter alarms by state">
+          <button type="button" data-status="active" aria-pressed="true">
+            Active <b>0</b></button>
+          <button type="button" data-status="open">Open <b>0</b></button>
+          <button type="button" data-status="acknowledged">Acknowledged <b>0</b></button>
+          <button type="button" data-status="recovered">Recovered <b>0</b></button>
+          <button type="button" data-status="resolved">Resolved <b>0</b></button>
+          <button type="button" data-status="all">All <b>0</b></button>
+        </div>
+      </div>
+      <div class="alarm-filter-row alarm-filter-selects">
+        <label class="alarm-field">
+          <span>Severity</span>
+          <select id="alarm-severity" aria-label="Filter by severity">
+            <option value="">All severities</option>
+            <option value="warning">Warning</option>
+            <option value="serious">Serious</option>
+            <option value="critical">Critical</option>
+          </select>
+        </label>
+        <label class="alarm-field">
+          <span>Building</span>
+          <select id="alarm-building" aria-label="Filter by building">
+            <option value="">All buildings</option>
+          </select>
+        </label>
+        <label class="alarm-field">
+          <span>Operator</span>
+          <input id="alarm-operator" type="text" maxlength="40"
+                 placeholder="Operator" autocomplete="off" spellcheck="false"
+                 aria-label="Operator name used for acknowledge and resolve">
+        </label>
+      </div>
+    </div>
+    <p class="alarm-note" id="alarm-note">Alarms are derived from simulated sensor
+      anomalies and operator actions. No physical devices are connected.</p>
+    <div class="alarm-status" id="alarm-status" role="status" aria-live="polite"></div>
+    <ul id="alarm-list" class="alarm-list" aria-label="Alarm records"></ul>
+    <div class="alarm-empty hidden" id="alarm-empty">
+      <b>No alarms</b>
+      <span id="alarm-empty-text">No alarm records.</span>
+    </div>
+    <div class="alarm-foot">Acknowledge takes ownership; the condition stays visible.
+      Resolve is only accepted after the detector reports recovery, so an active
+      anomaly can never be hidden behind a closed record.</div>
+  </aside>
+
+  <!-- left floating cards: on the shell scene routes this stack becomes the
+       fixed right-side panel stack for Repair matching and Trend analysis -->
+  <div class="left-stack" id="left-stack">
+    <section class="glass-card repair-card" id="repair-card">
+      <div class="card-top">
+        <span class="card-kicker"><span class="ico-spark" aria-hidden="true">✧</span> Repair matching</span>
+        <span class="panel-head-actions">
+          <span class="trend-chip" id="repair-chip">Live</span>
+          <button type="button" class="card-x" id="repair-close"
+                  title="Close Repair matching" aria-label="Close Repair matching">&times;</button>
+        </span>
+      </div>
+      <div id="repair-body" class="repair-body">
+        <div class="repair-empty">Scanning the plant for anomalies…</div>
+      </div>
+    </section>
+
+    <section class="glass-card trend-card" id="trend-card">
+      <div class="card-top">
+        <span class="card-kicker">Trend analysis</span>
+        <span class="panel-head-actions">
+          <span class="sev-chip" id="trend-chip">Normal</span>
+          <button type="button" class="card-x" id="trend-close"
+                  title="Close Trend analysis" aria-label="Close Trend analysis">&times;</button>
+        </span>
+      </div>
+      <div class="trend-sub" id="trend-sub">PV string power analysis · today</div>
+      <div id="trend-chart" class="trend-chart"></div>
+    </section>
+  </div>
+
+  <!-- right floating cards -->
+  <div class="right-stack">
+    <section class="glass-card donut-card" id="donut-card">
+      <div class="card-top">
+        <span class="card-kicker">Solar PR <span class="muted">|</span> Live</span>
+        <span class="card-dots" aria-hidden="true">•••</span>
+      </div>
+      <div class="donut-wrap">
+        <svg id="donut-svg" viewBox="0 0 240 132" aria-hidden="true">
+          <defs>
+            <linearGradient id="donut-actual-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#f0b25e"/><stop offset="1" stop-color="#d8893a"/>
+            </linearGradient>
+            <linearGradient id="donut-expected-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#55d6c2"/><stop offset="1" stop-color="#2a9e94"/>
+            </linearGradient>
+          </defs>
+          <path id="donut-track" d="M 30 118 A 90 90 0 0 1 210 118" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="10" stroke-linecap="round"/>
+          <path id="donut-actual-arc" d="" fill="none" stroke="url(#donut-actual-grad)" stroke-width="10" stroke-linecap="round"/>
+          <path id="donut-expected-arc" d="" fill="none" stroke="url(#donut-expected-grad)" stroke-width="10" stroke-linecap="round"/>
+          <text id="donut-center" x="120" y="104" text-anchor="middle" fill="#f0f1f4" font-size="21" font-weight="700" font-family="system-ui, sans-serif">—</text>
+          <text class="donut-sub" x="120" y="121" text-anchor="middle" fill="#8d929c" font-size="9" letter-spacing="1.6" font-family="system-ui, sans-serif">PERFORMANCE</text>
+        </svg>
+      </div>
+      <div class="donut-legend">
+        <div class="lg-item"><span class="lg-dot actual"></span><div><b id="donut-actual">—</b><small>Actual · kW</small></div></div>
+        <div class="lg-item"><span class="lg-dot expected"></span><div><b id="donut-expected">—</b><small>Expected · kW</small></div></div>
+      </div>
+    </section>
+
+    <section class="glass-card metrics-card" id="metrics-card">
+      <div class="metrics-grid">
+        <div class="metric">
+          <span class="m-label">Building load</span>
+          <span class="m-val" id="kpi-load-val">—</span>
+          <span class="m-sub" id="kpi-load-sub">—</span>
+        </div>
+        <div class="metric">
+          <span class="m-label">Grid exchange</span>
+          <span class="m-val" id="kpi-grid-val">—</span>
+          <span class="m-sub" id="kpi-grid-sub">—</span>
+        </div>
+        <div class="metric">
+          <span class="m-label">Self-sufficiency</span>
+          <span class="m-val" id="kpi-suff-val">—</span>
+          <span class="m-sub" id="kpi-suff-sub">—</span>
+        </div>
+        <div class="metric">
+          <span class="m-label">Active anomalies</span>
+          <span class="m-val" id="kpi-anom-val">—</span>
+          <span class="m-sub" id="kpi-anom-sub">—</span>
+        </div>
+      </div>
+      <div class="mix-mini">
+        <div class="mix-mini-head">Energy mix today <button class="table-toggle" data-table="mix">table</button></div>
+        <div id="mix-chart"></div>
+      </div>
+    </section>
+
+    <section class="glass-card value-card" id="value-card">
+      <div class="card-top">
+        <span class="card-kicker">Value at risk <span class="muted">|</span> Today</span>
+      </div>
+      <div class="value-main">
+        <b id="value-cost">—</b><span>projected waste cost</span>
+      </div>
+      <div class="value-sub">
+        <span><b id="value-kwh">—</b> wasted</span>
+        <span><b id="value-co2">—</b> CO₂</span>
+        <span><b id="value-health">—</b> health</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- building navigator: Building → Floor → Room → Equipment, searchable -->
+  <section class="glass-card navigator hidden" id="navigator" aria-label="Building navigator">
+    <div class="card-top">
+      <span class="card-kicker" id="nav-kicker">Building navigator</span>
+      <button type="button" class="card-x" id="nav-close" title="Close navigator"
+              aria-label="Close building navigator">&times;</button>
+    </div>
+    <nav class="nav-crumbs" id="nav-crumbs" aria-label="Selected object hierarchy"></nav>
+    <div class="nav-selectors">
+      <label class="nav-field nav-field-wide">
+        <span>Building</span>
+        <select id="nav-building" aria-label="Building selector"></select>
+      </label>
+      <label class="nav-field">
+        <span>Floor</span>
+        <select id="nav-floor" aria-label="Floor selector"></select>
+      </label>
+      <label class="nav-field">
+        <span>Room / zone</span>
+        <select id="nav-room" aria-label="Room selector"></select>
+      </label>
+    </div>
+    <div class="nav-floors" id="nav-floors" role="group" aria-label="Clickable floor navigation"></div>
+    <div class="nav-actions">
+      <button type="button" class="nav-overview" id="nav-overview" title="Return to the building overview">⌂ Building overview</button>
+      <button type="button" class="nav-focus" id="nav-focus" title="Focus the selected object in the 3D scene (F)">◎ Focus</button>
+    </div>
+    <label class="nav-search">
+      <span class="nav-search-ico" aria-hidden="true">⌕</span>
+      <input id="nav-search" type="search" placeholder="Search equipment, room, ID…" autocomplete="off" spellcheck="false" aria-label="Search equipment">
+    </label>
+    <div class="nav-filters" id="nav-filters" aria-label="Equipment filters">
+      <select id="nav-filter-type" aria-label="Filter by equipment type"></select>
+      <select id="nav-filter-status" aria-label="Filter by equipment status"></select>
+      <select id="nav-filter-source" aria-label="Filter by data source"></select>
+      <button type="button" class="nav-filter-anomalies" id="nav-filter-anomalies" aria-pressed="false" title="Show only equipment with an active anomaly">⚠ Anomalies</button>
+      <button type="button" class="nav-filter-clear hidden" id="nav-filter-clear" title="Clear search and filters">Clear</button>
+    </div>
+    <div class="nav-scope" id="nav-scope" aria-live="polite">—</div>
+    <div class="nav-list-wrap" id="nav-list-wrap">
+      <ul id="nav-equipment" class="nav-equipment" aria-label="Equipment in scope"></ul>
+      <div class="nav-empty hidden" id="nav-empty">
+        <span id="nav-empty-text">No equipment matches.</span>
+        <button type="button" class="nav-clear-search" id="nav-clear-search">Clear search</button>
+      </div>
+    </div>
+    <div class="nav-selected hidden" id="nav-selected">
+      <span class="nav-selected-kicker">Selected</span>
+      <button type="button" class="nav-selected-btn" id="nav-selected-btn" title="Open the selected object's details">
+        <span class="nav-selected-main">
+          <span class="nav-selected-name" id="nav-selected-name">—</span>
+          <span class="nav-selected-kind" id="nav-selected-kind">—</span>
+        </span>
+        <span class="nav-selected-go">Details →</span>
+      </button>
+    </div>
+    <div class="pop-note nav-note">Selecting here highlights the same object in 3D; clicking the scene updates this list and the details panel.</div>
+  </section>
+
+  <!-- scene navigation (floor pills / back, filled by app.js) -->
+  <nav class="view-nav hidden" id="view-nav" aria-label="Scene navigation"></nav>
+
+  <!-- camera hint (fades out) -->
+  <div class="cam-hint" id="cam-hint">Drag to orbit 360° · Right/Shift-drag to pan · Scroll to zoom · R reset · F focus</div>
+
+  <!-- opt-in WebGL prototype only: presentation-scale disclosure -->
+  <p class="present-note" id="present-note">
+    <span class="present-note-kicker">Presentation scale</span>
+    Architectural model — storey heights are raised for legibility. Room areas, equipment IDs and simulated readings are unchanged system data.
+  </p>
+
+  <!-- camera controls -->
+  <div class="zoom-fab" role="group" aria-label="Camera controls">
+    <div class="cam-preset-row" role="group" aria-label="Camera view presets">
+      <button type="button" class="zc-btn cam-preset" data-cam-preset="front"
+              title="Front view (Shift+1)" aria-label="Front view">F</button>
+      <button type="button" class="zc-btn cam-preset" data-cam-preset="back"
+              title="Back view (Shift+2)" aria-label="Back view">B</button>
+      <button type="button" class="zc-btn cam-preset" data-cam-preset="left"
+              title="Left view (Shift+3)" aria-label="Left view">L</button>
+      <button type="button" class="zc-btn cam-preset" data-cam-preset="right"
+              title="Right view (Shift+4)" aria-label="Right view">R</button>
+      <button type="button" class="zc-btn cam-preset" data-cam-preset="top"
+              title="Top view (Shift+5)" aria-label="Top view">T</button>
+      <button type="button" class="zc-btn cam-preset" data-cam-preset="iso"
+              title="Isometric view (Shift+6)" aria-label="Isometric view">ISO</button>
+    </div>
+    <div class="cam-action-row">
+      <button id="twin-zoom-out" class="zc-btn" title="Zoom out (−)" aria-label="Zoom out">−</button>
+      <button id="twin-cam-home" class="zc-btn" title="Frame the current view (H)" aria-label="Frame current view">⌂</button>
+      <button id="twin-cam-focus" class="zc-btn" title="Focus the selected equipment (F)" aria-label="Focus selection">◎</button>
+      <button id="twin-zoom-reset" class="zc-btn" title="Reset camera (R)" aria-label="Reset camera">⟲</button>
+      <button id="twin-zoom-in" class="zc-btn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
+  </div>
+
+  <!-- bottom production dock -->
+  <footer class="bottom-dock" id="bottom-dock">
+    <div class="prod-kpi">
+      <span class="bolt-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M13 2.5 5.5 13.2H11l-1 8.3 8-11.2h-5.6z"/></svg>
+      </span>
+      <div class="prod-kpi-text">
+        <div class="prod-kpi-val" id="photo-kpi-val">—</div>
+        <div class="prod-kpi-label">Solar Production</div>
+      </div>
+      <div class="prod-meta">
+        <span>Peak output <b id="peak-val">—</b></span>
+        <span>Efficiency <b id="eff-val">—</b></span>
+      </div>
+    </div>
+    <div class="prod-chart">
+      <div class="prod-chart-head">
+        <span class="chart-kpi"><b id="chart-kpi-val">—</b> solar today</span>
+        <span class="chart-legend" id="overlay-legend"></span>
+        <div class="range-row" id="range-row">
+          <button class="range-btn" data-range="1440">1d</button>
+          <button class="range-btn" data-range="4320">3d</button>
+          <button class="range-btn" data-range="10080">7d</button>
+          <button class="range-btn selected" data-range="0">All</button>
+          <button class="table-toggle" data-table="main">table</button>
+        </div>
+      </div>
+      <div id="main-chart" class="chart"></div>
+    </div>
+    <div class="bottom-actions">
+      <button id="copilot-btn" class="pill-btn"><span class="pill-ico">◉</span> Copilot</button>
+      <button id="simulate-btn" class="pill-btn primary"><span class="pill-ico">⌁</span> Simulate</button>
+      <button id="dock-repair" type="button" class="pill-btn" aria-pressed="true"
+              title="Show / hide the Repair matching side panel"
+              aria-label="Repair matching side panel"><span class="pill-ico" aria-hidden="true">✧</span> Repair</button>
+      <button id="dock-trend" type="button" class="pill-btn" aria-pressed="true"
+              title="Show / hide the Trend analysis side panel"
+              aria-label="Trend analysis side panel"><span class="pill-ico" aria-hidden="true">∿</span> Trend</button>
+    </div>
+  </footer>
+
+  <div id="twin-tip" class="twin-tip hidden"></div>
+</div>
+
+<section class="layout below-fold" id="below-fold" aria-label="Energy intelligence">
+  <noscript><p class="below-note">Enable JavaScript to use the digital twin.</p></noscript>
+</section>
+
+<aside id="device-drawer" class="drawer hidden" role="dialog" aria-modal="false"
+       aria-labelledby="dev-name">
   <div class="drawer-head">
     <h2 id="dev-name">Device</h2>
-    <button id="drawer-close" class="btn" title="Close">✕</button>
+    <button type="button" id="drawer-close" class="btn" title="Close details"
+            aria-label="Close device details">&times;</button>
   </div>
   <div id="dev-body" class="drawer-body"></div>
 </aside>
 
+<!-- keyboard shortcut reference (opened with ? or the HUD "?" button) -->
+<div class="kbd-help hidden" id="kbd-help" role="dialog" aria-modal="true"
+     aria-labelledby="kbd-help-title">
+  <div class="kbd-help-card">
+    <div class="kbd-help-head">
+      <h2 id="kbd-help-title">Keyboard shortcuts</h2>
+      <button type="button" class="btn" id="kbd-help-close" aria-label="Close keyboard shortcuts">&times;</button>
+    </div>
+    <dl class="kbd-help-list">
+      <div><dt><kbd>Tab</kbd></dt><dd>Move into the scene, the equipment list and the cards</dd></div>
+      <div><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between objects in the scene</dd></div>
+      <div><dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>First / last object in the scene</dd></div>
+      <div><dt><kbd>Enter</kbd> <kbd>Space</kbd></dt><dd>Open the focused object</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>Clear scene focus, close the panel, or go up one level</dd></div>
+      <div><dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Orbit / tilt the camera</dd></div>
+      <div><dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>Dolly the camera in / out</dd></div>
+      <div><dt><kbd>H</kbd></dt><dd>Frame the current building, floor or room</dd></div>
+      <div><dt><kbd>F</kbd></dt><dd>Focus the camera on the current selection</dd></div>
+      <div><dt><kbd>R</kbd></dt><dd>Reset the camera</dd></div>
+      <div><dt><kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>6</kbd></dt><dd>Front / Back / Left / Right / Top / Isometric</dd></div>
+      <div><dt><kbd>/</kbd></dt><dd>Search equipment in the building navigator</dd></div>
+      <div><dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>Switch visualization mode</dd></div>
+      <div><dt><kbd>E</kbd></dt><dd>Explode / collapse floors (building view)</dd></div>
+      <div><dt><kbd>A</kbd></dt><dd>Open / close the alarm center</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>This help dialog</dd></div>
+    </dl>
+    <p class="kbd-help-note">Mouse and touch: left-drag orbits a full 360°, right-drag or
+      Shift-drag pans, scroll or pinch dollies. Click an object to open it.
+      Camera keys and the view presets apply in the WebGL 3D view.</p>
+  </div>
+</div>
+
+<script src="perf.js"></script>
+<script src="net.js"></script>
+<script src="scene.js"></script>
+<script src="building.js"></script>
+<script>
+  // The enhanced camera controller belongs to the WebGL renderer, which is
+  // now the default. It is skipped only for the explicit legacy Canvas
+  // opt-out (?render=canvas), so older deployments whose static allowlist
+  // predates the file never request it unless they actually use WebGL.
+  if (!/[?&]render=canvas(?:2d)?(?:&|$)/.test(location.search)) {
+    document.write('<script src="camera-controls.js"><\/script>');
+  }
+</script>
+<script src="viz.js"></script>
+<script src="playback.js"></script>
+<script src="shell.js"></script>
 <script src="app.js"></script>
+<script src="navigator.js"></script>
+<script src="alarms.js"></script>
+<script src="keyboard.js"></script>
+<script src="fallback.js"></script>
 <script src="energy-intelligence.js"></script>
 </body>
 </html>

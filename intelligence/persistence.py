@@ -1,4 +1,9 @@
-"""Tiny SQLite persistence layer; optional but stdlib-only."""
+"""Tiny SQLite persistence layer; optional but stdlib-only.
+
+The schema is owned by ``equipment.migrations`` so this store and the
+equipment store share one versioned schema instead of each creating its
+own tables.
+"""
 
 from __future__ import annotations
 
@@ -7,23 +12,18 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from equipment.migrations import apply_migrations
+
 
 class IntelligenceStore:
     def __init__(self, path="data/energy_intelligence.db"):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute("PRAGMA journal_mode = WAL")
         self.lock = threading.Lock()
-        self.conn.execute(
-            """CREATE TABLE IF NOT EXISTS intelligence_snapshots (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 ts REAL NOT NULL,
-                 day INTEGER,
-                 sim_time TEXT,
-                 health_score REAL,
-                 payload TEXT NOT NULL
-               )"""
-        )
+        self.schema_version = apply_migrations(self.conn)
         self.conn.commit()
 
     def record(self, snapshot, intelligence):

@@ -17,11 +17,13 @@ EQUIPMENT_ACTIONS = {
     "plugs": "Audit after-hours loads and isolate phantom/standby loads.",
     "solar": "Inspect for soiling, shading, string faults and hotspots.",
     "inverter": "Inspect cooling, DC terminations, MPPT behavior and inverter diagnostics.",
+    "panel": "Inspect the panel for hot spots, cracked cells, connector faults or shading; compare against neighbouring panels.",
 }
 
 
 def recommendations(snapshot, ranked_events):
     devices = {d["id"]: d for d in snapshot.get("devices", [])}
+    devices.update({p["id"]: p for p in snapshot.get("panels", [])})
     out = []
     for event in ranked_events:
         device = devices.get(event.get("device_id"), {})

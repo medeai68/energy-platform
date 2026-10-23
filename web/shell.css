@@ -1,0 +1,1125 @@
+/* ============================================================
+   Phase 2 — enterprise application shell
+   ------------------------------------------------------------
+   Scoped shell layout and shared primitives. The existing dashboard,
+   drawer, alarm center, navigator and twin styles remain untouched.
+   ============================================================ */
+
+:root {
+  --shell-sidebar-w: 224px;
+  --shell-topbar-h: 62px;
+  --shell-accent: #64c7b4;
+  --shell-accent-strong: #8fe0d0;
+  --shell-brand: #f0c184;
+  --shell-focus: #79c9ff;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  --text-xs: 10px;
+  --text-sm: 11.5px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 20px;
+  --text-2xl: 27px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shell-border: rgba(255, 255, 255, 0.09);
+  --shell-border-strong: rgba(255, 255, 255, 0.16);
+  --shell-panel: rgba(18, 20, 26, 0.92);
+  --shell-panel-soft: rgba(23, 26, 33, 0.72);
+  --shell-text: #f4f5f7;
+  --shell-text-soft: #b9bdc9;
+  --shell-text-muted: #808694;
+  --shell-sidebar: rgba(12, 14, 18, 0.94);
+  --shell-topbar: rgba(11, 13, 17, 0.88);
+  --shell-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+  --shell-transition: 150ms ease;
+}
+
+:root[data-theme="light"] {
+  --shell-border: rgba(16, 19, 24, 0.12);
+  --shell-border-strong: rgba(16, 19, 24, 0.2);
+  --shell-panel: rgba(255, 255, 255, 0.96);
+  --shell-panel-soft: rgba(247, 248, 251, 0.9);
+  --shell-text: #101318;
+  --shell-text-soft: #4a4f5a;
+  --shell-text-muted: #6e7481;
+  --shell-sidebar: rgba(250, 251, 253, 0.97);
+  --shell-topbar: rgba(250, 251, 253, 0.92);
+  --shell-accent: #157a6b;
+  --shell-accent-strong: #0f6155;
+  --shell-brand: #a96622;
+  --shell-shadow: 0 18px 50px rgba(30, 40, 55, 0.14);
+}
+
+html { scroll-padding-top: calc(var(--shell-topbar-h) + 12px); }
+
+.app-shell {
+  min-height: 100dvh;
+  background: var(--page);
+}
+
+/* ---------------- sidebar ---------------- */
+
+.app-sidebar-slot { display: contents; }
+
+.rail.app-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--shell-sidebar-w);
+  height: 100dvh;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 14px 10px 10px;
+  margin: 0;
+  border: 0;
+  border-right: 1px solid var(--shell-border);
+  border-radius: 0;
+  background: var(--shell-sidebar);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 10px 0 40px rgba(0, 0, 0, 0.12);
+  transition: width var(--shell-transition), transform var(--shell-transition);
+  overflow: hidden;
+}
+
+.app-sidebar-slot .sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 5px 14px;
+  min-height: 46px;
+}
+.app-sidebar-slot .sidebar-brand .rail-logo {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+}
+.app-sidebar-slot .sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+.app-sidebar-slot .sidebar-brand-text b {
+  color: var(--shell-text);
+  font-size: var(--text-sm);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.app-sidebar-slot .sidebar-brand-text span {
+  color: var(--shell-text-muted);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-sidebar-slot .sidebar-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  padding: 2px 0 8px;
+}
+.app-sidebar-slot .sidebar-nav::-webkit-scrollbar { width: 5px; }
+.app-sidebar-slot .sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 99px;
+}
+
+.app-sidebar-slot .nav-group { margin: 0 0 13px; }
+.app-sidebar-slot .nav-group-label {
+  display: block;
+  padding: 4px 9px 5px;
+  color: var(--shell-text-muted);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-sidebar-slot .rail-btn {
+  width: 100%;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 9px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  color: var(--shell-text-soft);
+  background: transparent;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--shell-transition), color var(--shell-transition),
+    border-color var(--shell-transition);
+}
+.app-sidebar-slot .rail-btn svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.app-sidebar-slot .rail-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-sidebar-slot .rail-btn:hover {
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-text) 7%, transparent);
+}
+.app-sidebar-slot .rail-btn.route-active {
+  color: var(--shell-text);
+  background: color-mix(in srgb, var(--shell-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--shell-accent) 25%, transparent);
+}
+.app-sidebar-slot .rail-btn.route-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--shell-accent);
+}
+.app-sidebar-slot .rail-btn { position: relative; }
+.app-sidebar-slot .rail-btn.active:not(.route-active) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-accent) 22%, transparent);
+}
+.app-sidebar-slot .rail-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 7px 2px;
+  border-top: 1px solid var(--shell-border);
+}
+
+/* ---------------- frame and top bar ---------------- */
+
+.app-frame {
+  min-width: 0;
+  min-height: 100dvh;
+  margin-left: var(--shell-sidebar-w);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  height: var(--shell-topbar-h);
+  flex: 0 0 var(--shell-topbar-h);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--shell-border);
+  background: var(--shell-topbar);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.shell-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--shell-border);
+  background: transparent;
+  color: var(--shell-text);
+  font-size: 17px;
+  cursor: pointer;
+}
+.shell-menu-btn:hover { background: color-mix(in srgb, var(--shell-text) 7%, transparent); }
+
+.shell-breadcrumb {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: var(--shell-text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.shell-breadcrumb .shell-crumb {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shell-breadcrumb .shell-crumb.current {
+  color: var(--shell-text);
+  font-weight: 600;
+}
+.shell-breadcrumb button.shell-crumb {
+  appearance: none;
+  min-width: 0;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: var(--shell-text-soft);
+  font: inherit;
+  cursor: pointer;
+}
+.shell-breadcrumb button.shell-crumb:hover {
+  color: var(--shell-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.shell-breadcrumb button.shell-crumb:focus-visible {
+  outline: 2px solid var(--shell-focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.shell-breadcrumb .shell-sep { opacity: 0.38; }
+
+.app-topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.shell-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  max-width: 340px;
+  padding: 3px 9px;
+  border: 1px solid var(--shell-border);
+  border-radius: 999px;
+  color: var(--shell-text-soft);
+  background: var(--shell-panel-soft);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shell-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--shell-text-muted);
+}
+.shell-status.online .shell-status-dot { background: var(--good); }
+.shell-status.offline .shell-status-dot { background: var(--critical); }
+.shell-status.simulated { border-color: color-mix(in srgb, var(--shell-brand) 35%, transparent); }
+.shell-status.simulated .shell-status-dot { background: var(--shell-brand); }
+
+/* ---------------- page content ---------------- */
+
+.app-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-5);
+}
+.page-container {
+  width: 100%;
+  max-width: 1560px;
+  min-width: 0;
+  margin: 0 auto;
+  container-type: inline-size;
+  container-name: shellpage;
+}
+.page-header {
+  min-width: 0;
+  padding: 2px 2px var(--space-4);
+}
+.page-title {
+  margin: 0;
+  color: var(--shell-text);
+  font-size: var(--text-2xl);
+  line-height: 1.12;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+.page-subtitle {
+  max-width: 820px;
+  margin: 4px 0 0;
+  color: var(--shell-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.page-actions:empty { display: none; }
+.page-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.section-heading {
+  margin: 0 0 var(--space-2);
+  color: var(--shell-text);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+/* Scoped page panel primitive. */
+.shell-panel {
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-md);
+  background: var(--shell-panel);
+  color: var(--shell-text-soft);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.shell-panel + .shell-panel { margin-top: var(--space-3); }
+.shell-compat {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-left: 3px solid var(--shell-accent);
+}
+.shell-compat-copy { min-width: 0; }
+.shell-compat-kicker {
+  color: var(--shell-brand);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.shell-compat-title {
+  margin: 3px 0 4px;
+  color: var(--shell-text);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+.shell-compat p {
+  margin: 0;
+  color: var(--shell-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.shell-compat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* Shell buttons — deliberately scoped so legacy controls are untouched. */
+.shell-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-sm);
+  background: var(--shell-panel-soft);
+  color: var(--shell-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background var(--shell-transition), border-color var(--shell-transition);
+}
+.shell-btn:hover {
+  border-color: var(--shell-border-strong);
+  background: color-mix(in srgb, var(--shell-text) 8%, var(--shell-panel-soft));
+}
+.shell-btn.primary {
+  border-color: color-mix(in srgb, var(--shell-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--shell-accent) 18%, transparent);
+  color: var(--shell-text);
+}
+.shell-btn.ghost { background: transparent; }
+
+/* Reusable status/severity badge primitive. */
+.shell-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: 999px;
+  color: var(--shell-text-soft);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.shell-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.shell-badge.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.shell-badge.warning { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
+.shell-badge.serious { color: var(--serious); border-color: color-mix(in srgb, var(--serious) 35%, transparent); }
+.shell-badge.critical { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 35%, transparent); }
+.shell-badge.info { color: var(--shell-accent); border-color: color-mix(in srgb, var(--shell-accent) 35%, transparent); }
+
+/* Stage is the existing workspace; the shell must not draw over it. */
+.app-shell .stage {
+  width: 100%;
+  height: 960px;
+  min-height: 0;
+  margin: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.app-shell .stage #twin { height: 100%; }
+/* Compact page header on the scene routes: the stage top bar already shows
+   the scene title and KPI, so the shell subtitle is redundant chrome. */
+.app-shell.route-overview .page-header,
+.app-shell.route-twin .page-header { padding: 2px 2px var(--space-2); }
+.app-shell.route-overview .page-subtitle,
+.app-shell.route-twin .page-subtitle { display: none; }
+.app-shell.route-overview .page-title,
+.app-shell.route-twin .page-title { font-size: var(--text-lg); }
+/* Phase 3: on the scene routes fit the legacy workspace to the shell
+   viewport so the production dock and dashboard cards sit above the fold on
+   tall desktop displays. Other routes (assets navigator, alarm center,
+   analytics) keep the approved 960 px stage. */
+.app-shell.route-overview .stage,
+.app-shell.route-twin .stage {
+  height: clamp(620px, calc(100dvh - var(--shell-topbar-h) - 101px), 1060px);
+}
+/* Phase 9 — Repair Matching + Trend Analysis become side panels. The two
+   cards leave the left edge and form one fixed window stack along the
+   right side of the scene routes, below the shell topbar. Each card keeps
+   its own header with a ✕ close control, can be dragged out of the stack
+   and resized (shell.js), and the dock's Repair / Trend pills reopen a
+   closed panel. The stack participates in the stage's stacking context, so
+   it always paints below the shell topbar and the alarm center. Selectors
+   carry the extra .stage class so they outrank the shellpage container
+   queries that shrink the legacy card columns. */
+.app-shell.route-overview .stage .left-stack,
+.app-shell.route-twin .stage .left-stack {
+  position: fixed;
+  top: calc(var(--shell-topbar-h) + 12px);
+  right: 16px;
+  left: auto;
+  bottom: auto;
+  width: 360px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Keep the base .glass-card z-index (12): a card dragged out of the stack
+   gains .panel-dragged (z-index 46) so it paints above its siblings. */
+.app-shell.route-overview .stage .left-stack .glass-card,
+.app-shell.route-twin .stage .left-stack .glass-card { width: 100%; }
+.app-shell:not(.route-overview):not(.route-twin) .stage .left-stack { display: none; }
+/* Phones: the side panels become near-full-width bottom sheets (the same
+   convention as the alarm center). The base mobile rules hide the stack;
+   opening a panel through the dock pill adds .sidepanels-open. */
+@media (max-width: 760px) {
+  .app-shell.route-overview .stage .left-stack,
+  .app-shell.route-twin .stage .left-stack {
+    top: auto;
+    right: 8px;
+    left: calc(var(--shell-sidebar-w) + 8px);
+    bottom: 8px;
+    width: auto;
+    max-height: 68vh;
+    overflow-y: auto;
+  }
+  .app-shell.route-overview .stage .left-stack.sidepanels-open,
+  .app-shell.route-twin .stage .left-stack.sidepanels-open { display: flex; }
+}
+/* Phase 4 — Assets page: the building navigator becomes the page's full
+   equipment table, filling the stage. The scene stays behind it. The
+   explicit position keeps the page table bound to the stage even where
+   mobile rules make the floating panel viewport-fixed. */
+.app-shell.route-assets .navigator {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: auto;
+  max-height: none;
+  height: auto;
+  overflow: hidden;
+}
+/* Phase 11 — the Assets & Equipment card is closable in place: its header ×
+   stays visible while the card remains page-fill, and the permanent rail
+   launcher reopens it without leaving #/assets. */
+.app-shell.route-assets .navigator .card-x { display: inline-flex; }
+.app-shell.route-assets .nav-list-wrap { flex: 1 1 auto; min-height: 0; }
+/* Phase 10 — The alarm center is a floating window on every route, including
+   the /alarms deep link: its × stays visible, drag/resize stay available and
+   closing it leaves the destination (and the scene behind it) untouched. */
+.anl-page, .set-page { margin-top: var(--space-4); }
+.anl-head, .set-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.anl-tabs { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.anl-tabs .shell-btn.route-active {
+  border-color: color-mix(in srgb, var(--shell-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--shell-accent) 18%, transparent);
+}
+.anl-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+.anl-kpi {
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--shell-panel-soft);
+  min-width: 0;
+}
+.anl-kpi-label {
+  display: block;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--shell-text-muted);
+}
+.anl-kpi-value {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--shell-text);
+}
+.anl-kpi-unit { font-size: var(--text-xs); color: var(--shell-text-muted); }
+.anl-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); color: var(--shell-text-soft); }
+.anl-table th, .anl-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--shell-border); }
+.anl-table thead th {
+  color: var(--shell-text-muted);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.anl-timeline { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.anl-bucket {
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: var(--text-xs);
+  color: var(--shell-text-soft);
+}
+.anl-bucket.empty { opacity: 0.55; }
+.anl-note, .anl-empty, .set-note {
+  color: var(--shell-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  margin: var(--space-2) 0 0;
+}
+.anl-empty { margin-top: var(--space-3); }
+.anl-detail { min-width: 0; overflow-x: auto; }
+/* Phase 6 — Fleet page */
+.fleet-sites {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+.fleet-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-md);
+  background: var(--shell-panel-soft);
+  color: var(--shell-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--shell-transition);
+}
+.fleet-card:hover, .fleet-card.selected { border-color: var(--shell-border-strong); }
+.fleet-card.selected { outline: 2px solid var(--shell-accent); outline-offset: 1px; }
+.fleet-card-name { font-weight: 650; font-size: var(--text-md); }
+.fleet-card-stats { font-size: var(--text-sm); color: var(--shell-text-soft); font-variant-numeric: tabular-nums; }
+.fleet-card-age { font-size: var(--text-xs); color: var(--shell-text-muted); }
+.fleet-detail { margin-top: var(--space-3); }
+.set-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-1);
+}
+.set-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--shell-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.set-field select, .set-field input {
+  background: var(--shell-panel-soft);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-sm);
+  color: var(--shell-text);
+  padding: 7px 9px;
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.set-actions { flex-direction: row; align-items: flex-end; gap: var(--space-2); }
+.set-group-note {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--text-xs);
+  color: var(--shell-text-muted);
+}
+.set-head .shell-badge { align-self: center; }
+@media (max-width: 900px) {
+  .anl-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .set-grid { grid-template-columns: 1fr; }
+}
+/* At fitted stage heights the scene cards share a bounded vertical budget:
+   the alerts card is capped to its summary rows (the full feed lives in the
+   alarm center). The Phase 9 repair side panel keeps its full content — it
+   floats on the right side and can be resized or moved instead. */
+@media (min-height: 880px) {
+  .app-shell.route-overview .alerts-card,
+  .app-shell.route-twin .alerts-card { max-height: 132px; overflow: hidden; }
+}
+@media (min-height: 880px) and (max-height: 993px) {
+  .app-shell.route-overview .value-card,
+  .app-shell.route-twin .value-card { display: none; }
+}
+/* Short viewports: keep the approved 960 px scroll layout. */
+@media (max-height: 879px) and (min-width: 761px) {
+  .app-shell.route-overview .stage,
+  .app-shell.route-twin .stage { height: 960px; }
+}
+.app-shell .stage .title-block { display: none; }
+.app-shell .stage .topbar { left: auto; right: 16px; width: calc(100% - 32px); justify-content: flex-end; }
+.app-shell .stage .crumbs { display: none; }
+.app-shell .stage .top-kpi { margin-left: auto; }
+
+.app-shell .below-fold {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.app-shell .below-fold .card { border-radius: var(--radius-md); }
+
+/* Legacy overlays live at body level; keep them clear of the new sidebar
+   while leaving their internal layout and handlers untouched. */
+body.shell-mode .navigator {
+  left: calc(var(--shell-sidebar-w) + 14px);
+}
+/* Phase 12 — the simulation popover is a floating window like the others.
+   In shell mode it anchors below the sticky topbar and right of the sidebar,
+   so its header and × stay visible even when the page is scrolled down to
+   the Simulate button that opens it. */
+body.shell-mode .sim-pop {
+  position: fixed;
+  top: calc(var(--shell-topbar-h) + 12px);
+  left: calc(var(--shell-sidebar-w) + 14px);
+  z-index: 46;
+}
+@media (max-width: 1180px) {
+  body.shell-mode .navigator { left: calc(var(--shell-sidebar-w) + 10px); }
+}
+@media (max-width: 760px) {
+  body.shell-mode .navigator { left: calc(var(--shell-sidebar-w) + 10px); }
+}
+.app-shell.route-intelligence .stage { display: none; }
+.app-shell.route-intelligence .below-fold { margin-top: 0; }
+.app-shell:not(.route-intelligence) .belowfold-host { display: none !important; }
+/* Phase 3: the Overview page keeps the Energy Intelligence panel visible
+   below the scene so health, priorities and recommendations are discoverable
+   without leaving the dashboard. */
+.app-shell.route-overview .belowfold-host { display: block !important; }
+/* Phase 4 — Analytics + Settings pages: their sections live below the
+   scene in the same host the Overview uses for Energy Intelligence. */
+.app-shell.route-analytics .belowfold-host,
+.app-shell.route-settings .belowfold-host,
+.app-shell.route-fleet .belowfold-host { display: block !important; }
+.app-shell.route-analytics .below-fold,
+.app-shell.route-settings .below-fold,
+.app-shell.route-fleet .below-fold { display: none; }
+/* Phase 8: Settings is a configuration page, not a scene route. Keeping the
+   960 px stage above it pushed the controls below the fold, so clicking
+   Settings looked like a no-op. Hide the stage so the settings render at
+   the top of the page. */
+.app-shell.route-settings .stage { display: none; }
+.app-shell.route-settings .set-page { margin-top: 0; }
+.app-shell.route-overview .below-fold { padding: var(--space-4) 0 0; }
+/* Phase 3: the intelligence route is the module's own page — the provenance
+   note is the compat panel and the module panel gets page-level breathing
+   room. */
+.app-shell.route-intelligence .below-fold { padding: 0 0 var(--space-5); }
+.app-shell.route-intelligence .ei-panel { padding: 24px 26px; }
+.app-shell.route-intelligence .ei-columns { gap: 32px; }
+.app-shell.route-intelligence .ei-item { padding: 14px 0; }
+.app-shell.route-notfound .stage,
+.app-shell.route-notfound .belowfold-host { display: none; }
+
+.shell-notfound {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.shell-empty-code {
+  color: var(--shell-brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.app-shell #bottom-dock.shell-focus-flash {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: 3px;
+}
+
+/* ---------------- responsive shell ---------------- */
+
+@media (max-width: 1180px) {
+  :root { --shell-sidebar-w: 72px; }
+  .app-sidebar-slot .sidebar-brand { justify-content: center; padding-inline: 0; }
+  .app-sidebar-slot .sidebar-brand-text { display: none; }
+  .app-sidebar-slot .nav-group-label { display: none; }
+  .app-sidebar-slot .nav-group { margin-bottom: 7px; }
+  .app-sidebar-slot .rail-btn { justify-content: center; padding: 0; gap: 0; }
+  .app-sidebar-slot .rail-label { display: none; }
+  .app-sidebar-slot .rail-foot { justify-content: center; padding-inline: 0; }
+  .app-sidebar-slot .rail-dots { display: none; }
+  .shell-menu-btn { display: inline-flex; }
+  .app-content { padding: var(--space-4); }
+  .app-topbar { padding: 0 var(--space-4); }
+
+  .app-shell.sidebar-open .rail.app-sidebar {
+    width: 224px;
+    box-shadow: 18px 0 60px rgba(0, 0, 0, 0.48);
+  }
+  .app-shell.sidebar-open .app-sidebar-slot .sidebar-brand { justify-content: flex-start; padding-inline: 5px; }
+  .app-shell.sidebar-open .app-sidebar-slot .sidebar-brand-text { display: flex; }
+  .app-shell.sidebar-open .app-sidebar-slot .nav-group-label { display: block; }
+  .app-shell.sidebar-open .app-sidebar-slot .rail-btn { justify-content: flex-start; padding: 0 9px; gap: 10px; }
+  .app-shell.sidebar-open .app-sidebar-slot .rail-label { display: inline; }
+  .app-shell.sidebar-open .app-sidebar-slot .rail-foot { justify-content: flex-start; padding-inline: 7px; }
+  .app-shell.sidebar-open .app-sidebar-slot .rail-dots { display: inline; }
+  .shell-scrim { position: fixed; inset: 0; z-index: 69; background: rgba(5, 7, 10, 0.42); }
+}
+
+@media (max-width: 960px) {
+  .app-topbar { gap: var(--space-2); }
+  .shell-breadcrumb { font-size: 9.5px; }
+  .shell-status { max-width: 210px; }
+  .app-shell .stage .hud-strip { left: 16px; }
+  .app-shell .stage .viz-panel { left: 16px; }
+  .app-shell .stage .topbar { left: auto; right: 14px; }
+  /* Phase 12 — the legacy stylesheet hides .bottom-actions between 761 and
+     960px, which also removed the only trigger for the Simulation settings
+     window (the shell's rail Settings button navigates to the Settings page
+     instead). Keep the actions in the shell dock at those widths so the
+     window stays reachable; the dock already wraps and grows upward. */
+  .app-shell .stage .bottom-actions {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 760px) {
+  :root { --shell-sidebar-w: 64px; --shell-topbar-h: 56px; }
+  .app-sidebar-slot .rail.app-sidebar { padding: 10px 6px 8px; }
+  .app-sidebar-slot .sidebar-brand { padding-bottom: 10px; min-height: 40px; }
+  .app-sidebar-slot .sidebar-brand .rail-logo { width: 30px; height: 30px; }
+  .app-sidebar-slot .rail-btn { height: 36px; }
+  .app-content { padding: 10px; }
+  .app-topbar { padding: 0 10px; }
+  .shell-menu-btn { width: 32px; height: 32px; }
+  .shell-status { display: none; }
+  .page-title { font-size: 21px; }
+  .page-header { padding-bottom: var(--space-3); }
+  .app-shell .stage,
+  .app-shell.route-overview .stage,
+  .app-shell.route-twin .stage {
+    height: clamp(560px, calc(100dvh - var(--shell-topbar-h) - 150px), 760px);
+    border-radius: var(--radius-md);
+  }
+  .app-shell .stage .title-block { display: none; }
+  .app-shell .stage .topbar { left: auto; right: 10px; width: calc(100% - 20px); }
+  .app-shell .stage .hud-strip {
+    left: 10px;
+    top: 76px;
+    max-width: calc(100% - 20px);
+  }
+  .app-shell .stage .viz-panel {
+    left: 10px;
+    top: 150px;
+    width: calc(100% - 20px);
+  }
+  .app-shell .stage .bottom-dock {
+    left: 10px;
+    right: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+  .app-shell .stage .prod-chart,
+  .app-shell .stage .prod-chart-head,
+  .app-shell .stage .range-row { min-width: 0; flex-wrap: wrap; }
+  .app-shell .stage .bottom-actions {
+    grid-column: 1 / -1;
+    min-width: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .app-shell .stage .present-note,
+  .app-shell .stage .cam-hint { display: none; }
+  .shell-compat { flex-direction: column; }
+  .shell-compat-actions { width: 100%; }
+  .shell-compat-actions .shell-btn { flex: 1 1 auto; }
+  .app-shell.sidebar-open .rail.app-sidebar { width: 224px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail.app-sidebar, .app-sidebar-slot .rail-btn, .shell-btn { transition: none; }
+}
+
+/* The legacy dashboard used viewport-width media queries for absolutely
+   positioned cards. The shell reduces the workspace width, so adapt the
+   same card dimensions to the shell container. This does not redesign the
+   cards; it keeps their existing layout readable inside the shell. */
+@container shellpage (max-width: 1300px) {
+  .app-shell .stage .right-stack { width: 272px; }
+  .app-shell .stage .left-stack { width: 238px; }
+  .app-shell .stage .alerts-card { width: min(348px, 32vw); left: 42%; }
+  .app-shell .stage .bottom-dock { grid-template-columns: 240px minmax(0, 1fr) auto; gap: 14px; }
+  .app-shell .stage .prod-meta { display: none; }
+}
+@container shellpage (max-width: 1120px) {
+  .app-shell .stage .right-stack { width: 240px; }
+  .app-shell .stage .left-stack { width: 210px; }
+  .app-shell .stage .alerts-card { width: 300px; left: 38%; }
+  .app-shell .stage .viz-panel { width: 250px; }
+  .app-shell .stage .bottom-dock { grid-template-columns: 210px minmax(0, 1fr); gap: 12px; }
+}
+@container shellpage (max-width: 950px) {
+  /* Phase 10 — the Alerts card has a permanent launcher, so it must stay
+     reachable at tablet widths. The legacy container query hid it along with
+     the old scene cards; keep the card instead, parked left of the right-side
+     stack so its header and × are never covered. Phone widths keep their
+     bottom-sheet treatment below. */
+  .app-shell .stage .alerts-card {
+    display: block;
+    left: 16px;
+    right: auto;
+    top: 18%;
+    width: min(300px, calc(100% - 32px));
+    /* A window, not a scene decoration: above the scene's view-mode strip
+       (25) and navigator (32), below a window being dragged (46) and the
+       side-panel stack (45). */
+    z-index: 33;
+  }
+  .app-shell .stage .right-stack { width: 220px; }
+  .app-shell .stage .left-stack { width: 200px; }
+  .app-shell .stage .viz-panel { width: 238px; }
+}
+@container shellpage (max-width: 760px) {
+  /* The Alerts card is a launcher-controlled window now, so it is not part of
+     the legacy scene-decoration hide list. It is either hidden by its own
+     state or shown as a phone bottom sheet. */
+  .app-shell .stage .left-stack,
+  .app-shell .stage .right-stack,
+  .app-shell .stage .zoom-fab { display: none; }
+}
+
+/* Keep focus obvious on shell controls. */
+.app-shell :focus-visible,
+.rail.app-sidebar :focus-visible,
+.shell-menu-btn:focus-visible {
+  outline: 2px solid var(--shell-focus);
+  outline-offset: 2px;
+}
+
+/* Phase 8 — draggable floating panels */
+.panel-drag-handle { cursor: move; }
+body.panel-dragging { user-select: none; -webkit-user-select: none; }
+body.panel-dragging * { cursor: grabbing !important; }
+.panel-dragged { z-index: 46; }
+.app-shell.route-assets .panel-dragged { z-index: auto; }
+
+/* Phase 8 — the sticky shell topbar sits above the stage's stacking context,
+   so a fixed overlay inside the stage must start below it or its header
+   controls (close button, drag handle) become unclickable.
+   Phase 9 — the body-level device drawer gets the same rule so no floating
+   window covers the main navigation bar. */
+@media (min-width: 761px) {
+  body.shell-mode .alarm-center { top: calc(var(--shell-topbar-h) + 8px); }
+  body.shell-mode .drawer { top: calc(var(--shell-topbar-h) + 8px); }
+  /* Phase 12 — with the alarm center open, the drawer clears the center's
+     header so both windows keep a visible, independent × control. */
+  body.shell-mode .drawer.clear-alarm-head {
+    top: calc(var(--shell-topbar-h) + 62px);
+  }
+}
+
+/* ---------------- Phase 9 — resizable floating windows ----------------
+   Every floating window (navigator, simulation popover, alerts card,
+   repair + trend side panels, alarm center overlay, device drawer) grows
+   resize strips added by shell.js: the right and bottom edges plus a
+   visible bottom-right corner grip. Strips stop short of the header so
+   they never cover a close button, and they are hidden in page modes
+   (Assets table, Alarms page) and on phones where the windows use the
+   full-width sheet layout instead. */
+.shell-resize { position: absolute; z-index: 3; touch-action: none; }
+.shell-resize-e {
+  right: 0;
+  top: 50%;
+  bottom: 10px;
+  width: 9px;
+  cursor: ew-resize;
+}
+.shell-resize-s {
+  left: 10px;
+  right: 50%;
+  bottom: 0;
+  height: 9px;
+  cursor: ns-resize;
+}
+.shell-resize-se {
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 4px 4px 0;
+  cursor: nwse-resize;
+}
+.shell-resize-se::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid color-mix(in srgb, currentColor 60%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, currentColor 60%, transparent);
+  border-bottom-right-radius: 3px;
+}
+.shell-resize:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+.shell-resize-se:hover::after {
+  border-color: color-mix(in srgb, currentColor 85%, transparent);
+}
+body.panel-resizing,
+body.panel-resizing * {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: inherit !important;
+}
+.app-shell.route-assets .navigator .shell-resize { display: none; }
+@media (max-width: 760px) {
+  .shell-resize { display: none; }
+}
+
+/* ---------------- Phase 10 — window controls and launchers ----------------
+   Every floating window's close control uses × (U+00D7) with a 26 px target
+   and an explicit focus ring; the dialog-style windows get a 30 px target.
+   The Alerts card becomes a bottom sheet on phones so its permanent sidebar
+   launcher has a visible result on small viewports. */
+.card-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
+  border-radius: 6px;
+}
+.card-x:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+#alarm-close, #drawer-close, #kbd-help-close {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0 6px;
+  font-size: 17px;
+  line-height: 1;
+}
+.card-x:focus-visible,
+#alarm-close:focus-visible,
+#drawer-close:focus-visible {
+  outline: 2px solid var(--shell-focus);
+  outline-offset: 2px;
+}
+/* Phase 10 — the connection notice never sits on top of a top-right window's
+   close control. shell.js measures the rightmost open window (Repair/Trend
+   card, alarm center, device drawer) and publishes the clearance here; the
+   max-width keeps the notice right of the sidebar at narrow desktop sizes. */
+@media (min-width: 761px) {
+  body.shell-mode .conn-banner {
+    right: var(--shell-banner-right, 16px);
+    max-width: min(440px, calc(100vw - var(--shell-banner-right, 16px) - var(--shell-sidebar-w) - 16px));
+  }
+}
+@media (max-width: 760px) {
+  .app-shell .stage .alerts-card.sheet-open {
+    display: block;
+    position: fixed;
+    top: auto;
+    left: calc(var(--shell-sidebar-w) + 8px);
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-width: none;
+    max-height: min(62vh, 420px);
+    z-index: 47;
+    overflow: hidden;
+  }
+  .app-shell .stage .alerts-card.sheet-open .alerts {
+    max-height: calc(min(62vh, 420px) - 56px);
+  }
+  /* Phase 10 — phone bottom sheets start right of the fixed icon rail so
+     their titles, counts and close controls are never covered by it. */
+  body.shell-mode .alarm-center,
+  body.shell-mode .drawer {
+    left: calc(var(--shell-sidebar-w) + 8px);
+    right: 8px;
+  }
+  /* Phase 12 — the drawer is the taller sheet (max 66vh). Give a short alarm
+     center enough height that its header × sits above the drawer's top edge
+     instead of behind it, so both close controls remain reachable. */
+  body.shell-mode .alarm-center.clear-drawer-head {
+    min-height: 74vh;
+  }
+}

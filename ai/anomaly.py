@@ -13,7 +13,7 @@ can't name (lighting at night, inverter offline).
 
 SEVERITY_BAND = [(0.55, "critical"), (0.25, "serious")]
 
-NOUN = {"solar": "generation", "inverter": "output"}
+NOUN = {"solar": "generation", "inverter": "output", "panel": "generation"}
 
 
 def _severity(abs_rel):
@@ -51,7 +51,9 @@ class AnomalyDetector:
     def update(self, engine, env):
         self._engine = engine
         hour = env["hour"]
-        for dev in engine.devices:
+        devices = (engine.devices + getattr(engine, "panels", [])
+                   + getattr(engine, "equipment", []))
+        for dev in devices:
             e, a = dev.expected, dev.actual
             base = max(e, dev.rel_floor)
             rel = (a - e) / base if (e > 0 or a > 0) else 0.0
@@ -63,6 +65,10 @@ class AnomalyDetector:
             if dev.kind == "lighting" and night and a > 2.0:
                 self._raise(engine, dev, rel, f"Lighting active at night "
                             f"({a:.1f} kW at {engine.time_label})", "serious", st)
+                continue
+            if dev.kind == "room_light" and night and a > 0.15:
+                self._raise(engine, dev, rel, f"{dev.name} active at night "
+                            f"({a:.2f} kW at {engine.time_label})", "serious", st)
                 continue
             if dev.kind == "inverter" and rel < -0.95:
                 self._raise(engine, dev, rel, "Inverter offline - no AC output", "critical", st)

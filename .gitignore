@@ -17,3 +17,7 @@ Thumbs.db
 
 # Runtime intelligence data
 data/*.db
+
+# SQLite WAL sidecar files
+data/*.db-wal
+data/*.db-shm

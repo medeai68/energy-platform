@@ -21,6 +21,8 @@ def priority_score(event, device=None):
 
 def rank_events(snapshot):
     devices = {d["id"]: d for d in snapshot.get("devices", [])}
+    devices.update({p["id"]: p for p in snapshot.get("panels", [])})
+    devices.update({d["id"]: d for d in snapshot.get("equipment", [])})
     ranked = []
     for event in snapshot.get("anomalies", []):
         device = devices.get(event.get("device_id"))
